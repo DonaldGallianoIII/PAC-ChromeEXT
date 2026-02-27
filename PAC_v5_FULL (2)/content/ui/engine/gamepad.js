@@ -7,7 +7,7 @@
  * and the gamepad settings panel as PAC.UI.Sections.gamepad.
  *
  * @author Donald Galliano III × Cassy
- * @version 1.0 — Phase 1 (Shop Context)
+ * @version 1.1 — Phase 1 (Shop) + Phase 2 (Pick)
  */
 (function() {
   'use strict';
@@ -23,6 +23,7 @@
   var _panelContainer = null;
   var _lastSlotCount = 0;
   var _lastCursorIndex = 0;
+  var _lastPickIndex = 0;
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -95,15 +96,21 @@
     'border-radius:8px;padding:6px 14px;' +
     'font-family:\'Courier New\',monospace;font-size:10px;' +
     'color:rgba(255,255,255,0.6);white-space:nowrap;display:none;';
-  _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End';
   document.documentElement.appendChild(_hudEl);
 
-  function _showHUD() {
-    _hudEl.style.display = 'block';
-  }
-
-  function _hideHUD() {
-    _hudEl.style.display = 'none';
+  /**
+   * Update HUD text and visibility based on context.
+   */
+  function _updateHUD(context) {
+    if (context === 'shop') {
+      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End';
+      _hudEl.style.display = 'block';
+    } else if (context === 'pick') {
+      _hudEl.textContent = '\u25C4\u25BA Choose  \u00B7  A Pick';
+      _hudEl.style.display = 'block';
+    } else {
+      _hudEl.style.display = 'none';
+    }
   }
 
 
@@ -141,10 +148,67 @@
     _cursorEl.style.height = rect.height + 'px';
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VISIBILITY CHECK
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Check if a DOM element is actually visible on screen.
+   * Matches the authoritative isVisible() in api-core.js.
+   */
+  function _isVisible(el) {
+    if (!el) return false;
+    var style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    var rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PICK CURSOR POSITIONING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _positionPickCursor(index) {
+    _lastPickIndex = index;
+
+    // Try pokemon proposition first, then item proposition
+    var container = document.querySelector('.game-pokemons-proposition');
+    if (!container || !_isVisible(container)) {
+      container = document.querySelector('.game-items-proposition');
+    }
+    if (!container || !_isVisible(container)) {
+      _cursorEl.style.display = 'none';
+      return;
+    }
+
+    // Child selector: .game-pokemon-portrait with fallback to direct children
+    var choices = container.querySelectorAll('.game-pokemon-portrait');
+    if (choices.length === 0) {
+      choices = container.children;
+    }
+
+    if (choices.length === 0 || index >= choices.length) {
+      _cursorEl.style.display = 'none';
+      return;
+    }
+
+    var rect = choices[index].getBoundingClientRect();
+    _cursorEl.style.display = 'block';
+    _cursorEl.style.left = rect.left + 'px';
+    _cursorEl.style.top = rect.top + 'px';
+    _cursorEl.style.width = rect.width + 'px';
+    _cursorEl.style.height = rect.height + 'px';
+  }
+
+
   // Reposition cursor on window resize
   window.addEventListener('resize', function() {
-    if (_connected && _currentContext === 'shop') {
+    if (!_connected) return;
+    if (_currentContext === 'shop') {
       _positionShopCursor(_lastCursorIndex);
+    } else if (_currentContext === 'pick') {
+      _positionPickCursor(_lastPickIndex);
     }
   });
 
@@ -203,8 +267,8 @@
         _connectedId = e.data.gamepadId;
         if (_currentContext !== 'disabled') {
           _cursorEl.style.display = 'block';
-          _showHUD();
         }
+        _updateHUD(_currentContext !== 'disabled' ? _currentContext : 'disabled');
         if (_panelContainer) _renderPanel(_panelContainer);
         break;
 
@@ -212,13 +276,15 @@
         _connected = false;
         _connectedId = null;
         _cursorEl.style.display = 'none';
-        _hideHUD();
+        _updateHUD('disabled');
         if (_panelContainer) _renderPanel(_panelContainer);
         break;
 
       case 'PAC_GAMEPAD_CURSOR':
         if (e.data.context === 'shop') {
           _positionShopCursor(e.data.index);
+        } else if (e.data.context === 'pick') {
+          _positionPickCursor(e.data.index);
         }
         break;
 
@@ -234,10 +300,10 @@
         _currentContext = e.data.context;
         if (e.data.context === 'disabled') {
           _cursorEl.style.display = 'none';
-          _hideHUD();
-        } else if (e.data.context === 'shop' && _connected) {
+          _updateHUD('disabled');
+        } else if (_connected) {
           _cursorEl.style.display = 'block';
-          _showHUD();
+          _updateHUD(e.data.context);
         }
         break;
     }
@@ -346,6 +412,23 @@
     refContent.innerHTML = refHTML;
     refGroup.appendChild(refContent);
     container.appendChild(refGroup);
+
+    // ── Pick Controls ──
+    var pickGroup = document.createElement('div');
+    pickGroup.className = 'pac-group';
+    pickGroup.appendChild(_buildGroupHeader('PICK CONTROLS', 'rgba(255,255,255,0.3)'));
+
+    var pickHTML =
+      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
+        '<div><span style="color:rgba(48,213,200,0.7);">D-pad L/R</span> Cycle choices</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Pick selection</div>' +
+        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Auto-activates during proposition screens</div>' +
+      '</div>';
+
+    var pickContent = document.createElement('div');
+    pickContent.innerHTML = pickHTML;
+    pickGroup.appendChild(pickContent);
+    container.appendChild(pickGroup);
   }
 
   /**

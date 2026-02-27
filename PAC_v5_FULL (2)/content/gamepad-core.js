@@ -11,7 +11,7 @@
  * repeat-fire. D-pad supports hold-to-repeat (300ms delay, 80ms repeat).
  *
  * @author Donald Galliano III × Cassy
- * @version 1.0 — Phase 1 (Shop Context)
+ * @version 1.1 — Phase 1 (Shop) + Phase 2 (Pick)
  */
 (function() {
   'use strict';
@@ -25,7 +25,7 @@
   // ════════════════════════════════════════
 
   var _enabled = true;        // Toggled by content script via PAC_GAMEPAD_ENABLE
-  var _context = 'shop';      // 'shop' | 'disabled' (Phase 1 only)
+  var _context = 'shop';      // 'shop' | 'pick' | 'disabled'
   var _shopCursor = 0;        // Current shop slot (0-based)
   var _maxShopSlots = 6;      // Updated by content script via PAC_GAMEPAD_SLOT_COUNT
   var _prevButtons = [];      // Previous frame button states (16 booleans)
@@ -33,6 +33,8 @@
   var _holdTimers = {};       // D-pad hold-to-repeat timer IDs (keyed by button index)
   var _frameCount = 0;        // Frame counter for throttled phase checks
   var _polling = false;       // Whether polling loop is active
+  var _pickCursor = 0;        // Current pick choice (0-based)
+  var _pickCount = 0;         // Available choices (derived from mask)
 
 
   // ════════════════════════════════════════
@@ -64,17 +66,19 @@
     }
 
     var delta = (button === 14) ? -1 : 1; // Left = -1, Right = +1
+    var startContext = _context; // Capture context at repeat start
 
     // Initial delay
     _holdTimers[button] = setTimeout(function() {
       // Repeat interval
       _holdTimers[button] = setInterval(function() {
-        if (_context !== 'shop') {
+        if (_context !== startContext) {
           clearInterval(_holdTimers[button]);
           delete _holdTimers[button];
           return;
         }
-        _moveCursor(delta);
+        if (startContext === 'shop') _moveCursor(delta);
+        else if (startContext === 'pick') _movePickCursor(delta);
       }, 80);
     }, 300);
   }
@@ -107,6 +111,43 @@
       type: 'PAC_GAMEPAD_CURSOR',
       context: _context,
       index: _shopCursor
+    }, '*');
+  }
+
+
+  // ════════════════════════════════════════
+  // PICK CURSOR
+  // ════════════════════════════════════════
+
+  /**
+   * Count available pick slots from the action mask.
+   * Picks are contiguous at indices 80-85.
+   */
+  function _countPickSlots() {
+    if (!window.__AgentIO) return 0;
+    var mask = window.__AgentIO.mask();
+    if (!mask) return 0;
+    var count = 0;
+    for (var i = 80; i <= 85; i++) {
+      if (mask[i] === 1) count++;
+      else break;
+    }
+    return count;
+  }
+
+  /**
+   * Move pick cursor by delta with wrapping.
+   */
+  function _movePickCursor(delta) {
+    if (_pickCount === 0) return;
+    _pickCursor += delta;
+    if (_pickCursor < 0) _pickCursor = _pickCount - 1;
+    if (_pickCursor >= _pickCount) _pickCursor = 0;
+
+    window.postMessage({
+      type: 'PAC_GAMEPAD_CURSOR',
+      context: 'pick',
+      index: _pickCursor
     }, '*');
   }
 
@@ -178,7 +219,7 @@
 
   /**
    * Detect game context from __AgentIO.phase().
-   * Phase 1: 'shop' → 'shop', everything else → 'disabled'.
+   * Maps game phases to gamepad contexts.
    */
   function _detectContext() {
     if (!window.__AgentIO) return;
@@ -188,17 +229,41 @@
 
     if (phase === 'shop') {
       newContext = 'shop';
+    } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
+      newContext = 'pick';
     } else {
-      newContext = 'disabled'; // Phase 2+ adds 'pick', etc.
+      newContext = 'disabled';
     }
 
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
       _context = newContext;
+
+      // Reset pick cursor when entering pick context
+      if (newContext === 'pick') {
+        _pickCursor = 0;
+        _pickCount = _countPickSlots();
+      }
+
       window.postMessage({
         type: 'PAC_GAMEPAD_CONTEXT',
         context: _context
       }, '*');
+
+      // Send initial cursor position for the new context
+      if (newContext === 'pick') {
+        window.postMessage({
+          type: 'PAC_GAMEPAD_CURSOR',
+          context: 'pick',
+          index: _pickCursor
+        }, '*');
+      } else if (newContext === 'shop') {
+        window.postMessage({
+          type: 'PAC_GAMEPAD_CURSOR',
+          context: 'shop',
+          index: _shopCursor
+        }, '*');
+      }
     }
   }
 
@@ -213,6 +278,7 @@
   function _onPress(button) {
     if (_context === 'disabled') return;
     if (_context === 'shop') _shopPress(button);
+    if (_context === 'pick') _pickPress(button);
   }
 
   /**
@@ -238,6 +304,24 @@
       case 6:  _guardedExec(6); break;                 // LT = reroll
       case 7:  _guardedExec(7); break;                 // RT = level up
       case 9:  _guardedExec(9); break;                 // Menu = end turn
+    }
+
+    // Hold-to-repeat for D-pad only
+    if (button === 14 || button === 15) {
+      _startHoldRepeat(button);
+    }
+  }
+
+
+  /**
+   * Pick context button mapping.
+   * Only D-pad L/R and A — all other buttons ignored during picks.
+   */
+  function _pickPress(button) {
+    switch (button) {
+      case 14: _movePickCursor(-1); break;               // D-pad Left
+      case 15: _movePickCursor(1); break;                 // D-pad Right
+      case 0:  _guardedExec(80 + _pickCursor); break;     // A = pick choice
     }
 
     // Hold-to-repeat for D-pad only
