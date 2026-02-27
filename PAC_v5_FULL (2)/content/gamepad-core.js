@@ -4,14 +4,15 @@
  * Runs in PAGE CONTEXT (MAIN world). Injected by content/ui/engine/gamepad.js.
  *
  * Single rAF polling loop reads gamepad state every frame. D-pad navigates a
- * shop cursor; face buttons and triggers execute game commands via __AgentIO.
- * Context auto-detects from __AgentIO.phase() — Phase 1 supports shop only.
+ * shop cursor, pick cursor, or 2D board grid; face buttons and triggers execute
+ * game commands via __AgentIO. Board context supports grab/drop/sell via DRAG_DROP
+ * and SELL_POKEMON messages sent directly through __AgentIO.send().
  *
  * Button presses fire on transition (pressed: false → true) to prevent 60fps
  * repeat-fire. D-pad supports hold-to-repeat (300ms delay, 80ms repeat).
  *
  * @author Donald Galliano III × Cassy
- * @version 1.1 — Phase 1 (Shop) + Phase 2 (Pick)
+ * @version 1.2 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board)
  */
 (function() {
   'use strict';
@@ -25,7 +26,7 @@
   // ════════════════════════════════════════
 
   var _enabled = true;        // Toggled by content script via PAC_GAMEPAD_ENABLE
-  var _context = 'shop';      // 'shop' | 'pick' | 'disabled'
+  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'disabled'
   var _shopCursor = 0;        // Current shop slot (0-based)
   var _maxShopSlots = 6;      // Updated by content script via PAC_GAMEPAD_SLOT_COUNT
   var _prevButtons = [];      // Previous frame button states (16 booleans)
@@ -35,6 +36,11 @@
   var _polling = false;       // Whether polling loop is active
   var _pickCursor = 0;        // Current pick choice (0-based)
   var _pickCount = 0;         // Available choices (derived from mask)
+  var _boardCursorX = 0;      // Board cursor X (0-7)
+  var _boardCursorY = 0;      // Board cursor Y (0-3)
+  var _grabbedUnitId = null;  // Currently grabbed unit ID (null = not grabbing)
+  var _grabbedFromX = -1;     // Where we grabbed from
+  var _grabbedFromY = -1;
 
 
   // ════════════════════════════════════════
@@ -65,7 +71,6 @@
       clearInterval(_holdTimers[button]);
     }
 
-    var delta = (button === 14) ? -1 : 1; // Left = -1, Right = +1
     var startContext = _context; // Capture context at repeat start
 
     // Initial delay
@@ -77,8 +82,18 @@
           delete _holdTimers[button];
           return;
         }
-        if (startContext === 'shop') _moveCursor(delta);
-        else if (startContext === 'pick') _movePickCursor(delta);
+        if (startContext === 'shop') {
+          _moveCursor((button === 14) ? -1 : 1);
+        } else if (startContext === 'pick') {
+          _movePickCursor((button === 14) ? -1 : 1);
+        } else if (startContext === 'board') {
+          var dx = 0, dy = 0;
+          if (button === 14) dx = -1;
+          else if (button === 15) dx = 1;
+          else if (button === 12) dy = -1;
+          else if (button === 13) dy = 1;
+          _moveBoardCursor(dx, dy);
+        }
       }, 80);
     }, 300);
   }
@@ -149,6 +164,185 @@
       context: 'pick',
       index: _pickCursor
     }, '*');
+  }
+
+
+  // ════════════════════════════════════════
+  // BOARD CURSOR + GRAB/DROP
+  // ════════════════════════════════════════
+
+  /**
+   * Find unit at grid position from board array.
+   */
+  function _getUnitAt(board, x, y) {
+    for (var i = 0; i < board.length; i++) {
+      if (board[i].positionX === x && board[i].positionY === y) {
+        return board[i];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Move board cursor by dx/dy with wrapping on 8×4 grid.
+   */
+  function _moveBoardCursor(dx, dy) {
+    _boardCursorX += dx;
+    _boardCursorY += dy;
+    if (_boardCursorX < 0) _boardCursorX = 7;
+    if (_boardCursorX > 7) _boardCursorX = 0;
+    if (_boardCursorY < 0) _boardCursorY = 3;
+    if (_boardCursorY > 3) _boardCursorY = 0;
+
+    window.postMessage({
+      type: 'PAC_GAMEPAD_CURSOR',
+      context: 'board',
+      index: _boardCursorY * 8 + _boardCursorX,
+      x: _boardCursorX,
+      y: _boardCursorY,
+      grabbed: !!_grabbedUnitId
+    }, '*');
+  }
+
+  /**
+   * Clear grab state and notify content script.
+   */
+  function _clearGrab() {
+    _grabbedUnitId = null;
+    _grabbedFromX = -1;
+    _grabbedFromY = -1;
+    window.postMessage({
+      type: 'PAC_GAMEPAD_CURSOR',
+      context: 'board',
+      index: _boardCursorY * 8 + _boardCursorX,
+      x: _boardCursorX,
+      y: _boardCursorY,
+      grabbed: false
+    }, '*');
+  }
+
+  /**
+   * A button in board context — grab or drop unit.
+   */
+  function _boardAction() {
+    if (!window.__AgentIO) {
+      window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      return;
+    }
+
+    var obs = window.__AgentIO.obs();
+    if (!obs || !obs.self || !obs.self.board) {
+      window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      return;
+    }
+
+    var board = obs.self.board;
+
+    if (!_grabbedUnitId) {
+      // NOT GRABBED — try to grab unit at cursor
+      var unit = _getUnitAt(board, _boardCursorX, _boardCursorY);
+      if (!unit) {
+        window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'empty_cell' }, '*');
+        return;
+      }
+      _grabbedUnitId = unit.id;
+      _grabbedFromX = _boardCursorX;
+      _grabbedFromY = _boardCursorY;
+      window.postMessage({
+        type: 'PAC_GAMEPAD_GRABBED',
+        unitId: unit.id,
+        unitName: unit.name,
+        x: _boardCursorX,
+        y: _boardCursorY
+      }, '*');
+      return;
+    }
+
+    // GRABBED — drop/swap or cancel
+    if (_boardCursorX === _grabbedFromX && _boardCursorY === _grabbedFromY) {
+      // Dropped on same cell = cancel grab
+      _clearGrab();
+      window.postMessage({ type: 'PAC_GAMEPAD_GRAB_CANCELLED' }, '*');
+      return;
+    }
+
+    // Drop on any cell (empty = move, occupied = swap — server handles both)
+    window.__AgentIO.send('DRAG_DROP', {
+      x: _boardCursorX,
+      y: _boardCursorY,
+      id: _grabbedUnitId
+    });
+    window.postMessage({
+      type: 'PAC_GAMEPAD_DROPPED',
+      unitId: _grabbedUnitId,
+      fromX: _grabbedFromX,
+      fromY: _grabbedFromY,
+      toX: _boardCursorX,
+      toY: _boardCursorY
+    }, '*');
+    _clearGrab();
+  }
+
+  /**
+   * Y button in board context — sell unit.
+   */
+  function _boardSell() {
+    if (!window.__AgentIO) {
+      window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      return;
+    }
+
+    if (_grabbedUnitId) {
+      // Sell the grabbed unit
+      window.__AgentIO.send('SELL_POKEMON', _grabbedUnitId);
+      window.postMessage({
+        type: 'PAC_GAMEPAD_EXECUTED',
+        index: -1,
+        action: 'sell',
+        unitId: _grabbedUnitId
+      }, '*');
+      _clearGrab();
+      return;
+    }
+
+    // Sell unit at cursor
+    var obs = window.__AgentIO.obs();
+    if (!obs || !obs.self || !obs.self.board) {
+      window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      return;
+    }
+    var unit = _getUnitAt(obs.self.board, _boardCursorX, _boardCursorY);
+    if (!unit) {
+      window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'empty_cell' }, '*');
+      return;
+    }
+    window.__AgentIO.send('SELL_POKEMON', unit.id);
+    window.postMessage({
+      type: 'PAC_GAMEPAD_EXECUTED',
+      index: -1,
+      action: 'sell',
+      unitId: unit.id,
+      unitName: unit.name
+    }, '*');
+  }
+
+  /**
+   * B button in board context — cancel grab or return to shop.
+   */
+  function _boardCancel() {
+    if (_grabbedUnitId) {
+      _clearGrab();
+      window.postMessage({ type: 'PAC_GAMEPAD_GRAB_CANCELLED' }, '*');
+    } else {
+      _cancelAllHoldTimers();
+      _context = 'shop';
+      window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'shop' }, '*');
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR',
+        context: 'shop',
+        index: _shopCursor
+      }, '*');
+    }
   }
 
 
@@ -228,7 +422,8 @@
     var newContext;
 
     if (phase === 'shop') {
-      newContext = 'shop';
+      // Don't force shop if user manually toggled to board
+      newContext = (_context === 'board') ? 'board' : 'shop';
     } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
       newContext = 'pick';
     } else {
@@ -237,6 +432,7 @@
 
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
+      if (_grabbedUnitId) _clearGrab(); // Clear grab on any context change
       _context = newContext;
 
       // Reset pick cursor when entering pick context
@@ -263,6 +459,15 @@
           context: 'shop',
           index: _shopCursor
         }, '*');
+      } else if (newContext === 'board') {
+        window.postMessage({
+          type: 'PAC_GAMEPAD_CURSOR',
+          context: 'board',
+          index: _boardCursorY * 8 + _boardCursorX,
+          x: _boardCursorX,
+          y: _boardCursorY,
+          grabbed: false
+        }, '*');
       }
     }
   }
@@ -278,7 +483,8 @@
   function _onPress(button) {
     if (_context === 'disabled') return;
     if (_context === 'shop') _shopPress(button);
-    if (_context === 'pick') _pickPress(button);
+    else if (_context === 'pick') _pickPress(button);
+    else if (_context === 'board') _boardPress(button);
   }
 
   /**
@@ -304,6 +510,19 @@
       case 6:  _guardedExec(6); break;                 // LT = reroll
       case 7:  _guardedExec(7); break;                 // RT = level up
       case 9:  _guardedExec(9); break;                 // Menu = end turn
+      case 4:                                           // LB = switch to board
+        _cancelAllHoldTimers();
+        _context = 'board';
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'board' }, '*');
+        window.postMessage({
+          type: 'PAC_GAMEPAD_CURSOR',
+          context: 'board',
+          index: _boardCursorY * 8 + _boardCursorX,
+          x: _boardCursorX,
+          y: _boardCursorY,
+          grabbed: false
+        }, '*');
+        break;
     }
 
     // Hold-to-repeat for D-pad only
@@ -326,6 +545,39 @@
 
     // Hold-to-repeat for D-pad only
     if (button === 14 || button === 15) {
+      _startHoldRepeat(button);
+    }
+  }
+
+
+  /**
+   * Board context button mapping.
+   * D-pad navigates 8×4 grid, A grabs/drops, Y sells, B cancels/back, LB→shop.
+   */
+  function _boardPress(button) {
+    switch (button) {
+      case 12: _moveBoardCursor(0, -1); break;   // D-pad Up
+      case 13: _moveBoardCursor(0, 1); break;    // D-pad Down
+      case 14: _moveBoardCursor(-1, 0); break;   // D-pad Left
+      case 15: _moveBoardCursor(1, 0); break;    // D-pad Right
+      case 0:  _boardAction(); break;             // A = grab/drop
+      case 3:  _boardSell(); break;               // Y = sell
+      case 1:  _boardCancel(); break;             // B = cancel/back
+      case 4:                                     // LB = return to shop
+        _clearGrab();
+        _cancelAllHoldTimers();
+        _context = 'shop';
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'shop' }, '*');
+        window.postMessage({
+          type: 'PAC_GAMEPAD_CURSOR',
+          context: 'shop',
+          index: _shopCursor
+        }, '*');
+        break;
+    }
+
+    // Hold-to-repeat for all 4 D-pad directions in board
+    if (button >= 12 && button <= 15) {
       _startHoldRepeat(button);
     }
   }

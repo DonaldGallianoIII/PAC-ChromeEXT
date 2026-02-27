@@ -7,7 +7,7 @@
  * and the gamepad settings panel as PAC.UI.Sections.gamepad.
  *
  * @author Donald Galliano III × Cassy
- * @version 1.1 — Phase 1 (Shop) + Phase 2 (Pick)
+ * @version 1.2 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board)
  */
 (function() {
   'use strict';
@@ -24,6 +24,10 @@
   var _lastSlotCount = 0;
   var _lastCursorIndex = 0;
   var _lastPickIndex = 0;
+  var _lastBoardX = 0;
+  var _lastBoardY = 0;
+  var _boardGrabbed = false;
+  var _boardLayout = null;       // Cached pixel layout, invalidated on resize
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -103,10 +107,13 @@
    */
   function _updateHUD(context) {
     if (context === 'shop') {
-      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End';
+      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End  \u00B7  LB Board';
       _hudEl.style.display = 'block';
     } else if (context === 'pick') {
       _hudEl.textContent = '\u25C4\u25BA Choose  \u00B7  A Pick';
+      _hudEl.style.display = 'block';
+    } else if (context === 'board') {
+      _hudEl.textContent = '\u25C4\u25B2\u25BC\u25BA Move  \u00B7  A Grab/Drop  \u00B7  Y Sell  \u00B7  B Back  \u00B7  LB Shop';
       _hudEl.style.display = 'block';
     } else {
       _hudEl.style.display = 'none';
@@ -202,13 +209,72 @@
   }
 
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BOARD CURSOR POSITIONING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // From Phaser source (game res: 1950×1000, cell: 96×96).
+  // Coordinates are top-left corner of each cell, not center.
+  // Y-axis is INVERTED: positionY=0 is the bottom board row (highest pixel Y),
+  // positionY=3 is the top board row (lowest pixel Y).
+  var BOARD_LEFT_RATIO   = 0.32;      // (672 - 48) / 1950 — left edge of col 0
+  var BOARD_TOP_RATIO    = 0.616;     // (664 - 48) / 1000 — top edge of row 0 (bottom row)
+  var CELL_WIDTH_RATIO   = 0.04923;   // 96 / 1950
+  var CELL_HEIGHT_RATIO  = 0.096;     // 96 / 1000
+
+  function _calculateBoardLayout() {
+    var canvas = document.querySelector('canvas');
+    if (!canvas) return null;
+
+    var rect = canvas.getBoundingClientRect();
+    _boardLayout = {
+      canvasRect: rect,
+      originX: rect.left + rect.width * BOARD_LEFT_RATIO,
+      originY: rect.top + rect.height * BOARD_TOP_RATIO,
+      cellW: rect.width * CELL_WIDTH_RATIO,
+      cellH: rect.height * CELL_HEIGHT_RATIO
+    };
+    return _boardLayout;
+  }
+
+  function _positionBoardCursor(x, y, grabbed) {
+    _lastBoardX = x;
+    _lastBoardY = y;
+    _boardGrabbed = !!grabbed;
+
+    if (!_boardLayout) _calculateBoardLayout();
+    if (!_boardLayout) {
+      _cursorEl.style.display = 'none';
+      return;
+    }
+
+    _cursorEl.style.display = 'block';
+    _cursorEl.style.left = (_boardLayout.originX + x * _boardLayout.cellW) + 'px';
+    _cursorEl.style.top = (_boardLayout.originY - y * _boardLayout.cellH) + 'px';
+    _cursorEl.style.width = _boardLayout.cellW + 'px';
+    _cursorEl.style.height = _boardLayout.cellH + 'px';
+
+    // Visual state: grabbed = bright green, normal = teal
+    if (grabbed) {
+      _cursorEl.style.borderColor = 'rgba(72,255,128,0.9)';
+      _cursorEl.style.boxShadow = '0 0 16px rgba(72,255,128,0.5),inset 0 0 8px rgba(72,255,128,0.15)';
+    } else {
+      _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
+      _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
+    }
+  }
+
+
   // Reposition cursor on window resize
   window.addEventListener('resize', function() {
+    _boardLayout = null;   // Force recalculation
     if (!_connected) return;
     if (_currentContext === 'shop') {
       _positionShopCursor(_lastCursorIndex);
     } else if (_currentContext === 'pick') {
       _positionPickCursor(_lastPickIndex);
+    } else if (_currentContext === 'board') {
+      _positionBoardCursor(_lastBoardX, _lastBoardY, _boardGrabbed);
     }
   });
 
@@ -221,6 +287,7 @@
     if (reason === 'wrong_phase') return 'Not available in this phase';
     if (reason === 'cant_afford') return 'Not enough gold';
     if (reason === 'no_room') return 'Not in a game';
+    if (reason === 'empty_cell') return 'No unit here';
     return 'Action blocked';
   }
 
@@ -237,8 +304,15 @@
 
     if (_flashTimer) clearTimeout(_flashTimer);
     _flashTimer = setTimeout(function() {
-      _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
-      _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
+      if (_boardGrabbed) {
+        // Reset to grabbed state (bright green)
+        _cursorEl.style.borderColor = 'rgba(72,255,128,0.9)';
+        _cursorEl.style.boxShadow = '0 0 16px rgba(72,255,128,0.5),inset 0 0 8px rgba(72,255,128,0.15)';
+      } else {
+        // Reset to default teal
+        _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
+        _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
+      }
       _flashTimer = null;
     }, 150);
   }
@@ -285,6 +359,8 @@
           _positionShopCursor(e.data.index);
         } else if (e.data.context === 'pick') {
           _positionPickCursor(e.data.index);
+        } else if (e.data.context === 'board') {
+          _positionBoardCursor(e.data.x, e.data.y, e.data.grabbed);
         }
         break;
 
@@ -296,14 +372,33 @@
         PAC.UI.Components.Notification.show(_blockMessage(e.data.reason), 'warning', 1200);
         break;
 
+      case 'PAC_GAMEPAD_GRABBED':
+        _boardGrabbed = true;
+        _positionBoardCursor(e.data.x, e.data.y, true);
+        break;
+
+      case 'PAC_GAMEPAD_DROPPED':
+        _boardGrabbed = false;
+        _flashCursor();
+        break;
+
+      case 'PAC_GAMEPAD_GRAB_CANCELLED':
+        _boardGrabbed = false;
+        break;
+
       case 'PAC_GAMEPAD_CONTEXT':
         _currentContext = e.data.context;
+        _boardLayout = null;
+        _boardGrabbed = false;
         if (e.data.context === 'disabled') {
           _cursorEl.style.display = 'none';
           _updateHUD('disabled');
         } else if (_connected) {
           _cursorEl.style.display = 'block';
           _updateHUD(e.data.context);
+          // Reset cursor to default teal on context switch
+          _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
+          _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
         }
         break;
     }
@@ -406,6 +501,7 @@
         '<div><span style="color:rgba(48,213,200,0.7);">RT</span> Level up</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">X</span> Lock/unlock shop</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">Menu</span> End turn</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Switch to board</div>' +
       '</div>';
 
     var refContent = document.createElement('div');
@@ -429,6 +525,27 @@
     pickContent.innerHTML = pickHTML;
     pickGroup.appendChild(pickContent);
     container.appendChild(pickGroup);
+
+    // ── Board Controls ──
+    var boardGroup = document.createElement('div');
+    boardGroup.className = 'pac-group';
+    boardGroup.appendChild(_buildGroupHeader('BOARD CONTROLS', 'rgba(255,255,255,0.3)'));
+
+    var boardHTML =
+      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
+        '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Toggle to board (from shop)</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">D-pad</span> Move cursor on 8\u00D74 grid</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Grab unit / Drop unit</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">Y</span> Sell unit at cursor (or grabbed)</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel grab / Back to shop</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Return to shop</div>' +
+        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Cursor turns green when holding a unit</div>' +
+      '</div>';
+
+    var boardContent = document.createElement('div');
+    boardContent.innerHTML = boardHTML;
+    boardGroup.appendChild(boardContent);
+    container.appendChild(boardGroup);
   }
 
   /**
