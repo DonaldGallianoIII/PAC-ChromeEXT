@@ -1116,7 +1116,5 @@ PAC.Data.POKEMON_DATA = {
 };
   // Rarity display names and colors
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Data: Pokemon database loaded (' + Object.keys(PAC.Data.POKEMON_DATA).length + ' entries)');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Data: Pokemon database loaded (' + Object.keys(PAC.Data.POKEMON_DATA).length + ' entries)');
 })();

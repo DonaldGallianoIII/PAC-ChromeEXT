@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Drag + Resize Engine
+ * PAC v5 — Drag + Resize Engine
  * Drag by header, resize by edge handles. Matched to prototype behavior.
  */
 (function() {

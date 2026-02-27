@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Counter Intelligence Panel
+ * PAC v5 — Counter Intelligence Panel
  *
  * Displays all players' boards and benches.
  * Highlights contested pokemon (overlapping with your targets).
@@ -194,7 +194,5 @@
     });
   }
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Panels: Intel loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Panels: Intel loaded');
 })();

@@ -267,7 +267,5 @@
     return [];
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Core: State management loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Core: State management loaded');
 })();

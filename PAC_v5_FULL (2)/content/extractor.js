@@ -154,7 +154,7 @@
           }
           
           // Count board Pokemon
-          var board = Array.from(player.board.$items.values());
+          var board = player.board && player.board.$items ? Array.from(player.board.$items.values()) : [];
           var bench = player.bench && player.bench.$items ? Array.from(player.bench.$items.values()) : [];
           
           // Store this player's board if they have a name
@@ -283,7 +283,7 @@
                   if (itemTrimmed.length > 0) filteredShop.push(itemTrimmed);
                 } else if (item && item.name) {
                   itemTrimmed = item.name.trim();
-                  if (itemTrimmed.length > 0) filteredShop.push(item);
+                  if (itemTrimmed.length > 0) filteredShop.push(itemTrimmed);
                 }
               }
               playerShops[player.name] = filteredShop;

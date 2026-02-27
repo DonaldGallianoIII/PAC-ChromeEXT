@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Notification Component
+ * PAC v5 — Notification Component
  *
  * Toast-style notifications that auto-dismiss.
  */
@@ -54,7 +54,5 @@
     }
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Components: Notification loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Components: Notification loaded');
 })();

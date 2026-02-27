@@ -97,7 +97,5 @@
     'OKIDOGI', 'BASCULINRED', 'BASCULINBLUE'
   ]);
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Data: Constants loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Data: Constants loaded');
 })();

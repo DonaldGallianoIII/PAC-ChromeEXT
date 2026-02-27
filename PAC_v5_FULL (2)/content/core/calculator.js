@@ -258,7 +258,5 @@
     };
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Core: Calculator loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Core: Calculator loaded');
 })();

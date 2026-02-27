@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — Phone Hub
+ * PAC v5 — Phone Hub
  * Creates the phone glass card with app icon grid.
  *
  * 3 core apps always visible: Setup, Search, CMD

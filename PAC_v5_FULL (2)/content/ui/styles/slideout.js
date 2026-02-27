@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Detail Panel Styles
+ * PAC v5 — Detail Panel Styles
  * Same size as phone, positioned behind it (z:0), translates out.
  */
 (function() {

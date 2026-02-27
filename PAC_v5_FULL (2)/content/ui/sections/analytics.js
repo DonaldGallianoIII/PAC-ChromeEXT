@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — Analytics Panel
+ * PAC v5 — Analytics Panel
  *
  * Two tabs:
  *   Live — Real-time roll history by player
@@ -90,10 +90,22 @@
         PAC.UI.Components.Notification.show('All history cleared', 'success');
       });
 
-      // Listen for extraction updates to track rolls
-      PAC.UI.Events.on('extraction:updated', _onExtractionData);
+      // Listen for extraction updates to track rolls (once only)
+      _attachAnalyticsListeners();
     }
   };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVENT LISTENERS (registered once)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  var _analyticsListenersAttached = false;
+
+  function _attachAnalyticsListeners() {
+    if (_analyticsListenersAttached) return;
+    _analyticsListenersAttached = true;
+    PAC.UI.Events.on('extraction:updated', _onExtractionData);
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SHOP TRACKING ENGINE

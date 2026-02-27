@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Settings Section
+ * PAC v5 — Settings Section
  * Flash alerts, export/import, reset.
  */
 (function() {
@@ -107,8 +107,12 @@
       // Reset
       els.resetBtn.addEventListener('click', function() {
         if (confirm('Reset all PAC settings? This cannot be undone.')) {
-          localStorage.removeItem('pac_state');
-          localStorage.removeItem('pac_overlay');
+          var keys = Object.keys(localStorage);
+          for (var i = 0; i < keys.length; i++) {
+            if (keys[i].indexOf('pac_') === 0 && keys[i] !== 'pac_eulaAccepted') {
+              localStorage.removeItem(keys[i]);
+            }
+          }
           PAC.UI.Events.emit('settings:reset');
           location.reload();
         }

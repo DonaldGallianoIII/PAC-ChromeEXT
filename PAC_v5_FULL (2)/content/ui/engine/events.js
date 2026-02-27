@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Event Bus
+ * PAC v5 — Event Bus
  *
  * Simple pub/sub system for inter-panel communication.
  * Panels never reference each other directly — only through events.
@@ -98,7 +98,5 @@
     }
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Engine: Event bus loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Engine: Event bus loaded');
 })();

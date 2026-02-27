@@ -13,6 +13,7 @@
    * @returns {string} - The base form name
    */
   PAC.Utils.getBaseForm = function(pokemonName) {
+    if (!pokemonName) return '';
     const name = pokemonName.toUpperCase().replace(/[^A-Z0-9]/g, '');
     return PAC.Data.POKEMON_TO_BASE[name] || name;
   };
@@ -293,7 +294,5 @@
     return bestScore > 0 ? { name: bestName, score: bestScore } : null;
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Utils: Pokemon utilities loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Utils: Pokemon utilities loaded');
 })();

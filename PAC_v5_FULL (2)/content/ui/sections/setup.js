@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — Setup Section
+ * PAC v5 — Setup Section
  * Player name, live tracking, connection status, poll speed, reinject.
  * This is the "launch pad" — set it once at game start, glance at status.
  */

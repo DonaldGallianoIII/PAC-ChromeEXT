@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — Extraction Bridge
+ * PAC v5 — Extraction Bridge
  *
  * Missing piece: Injects extractor.js into page context,
  * runs the polling loop, and bridges postMessage ↔ event bus.
@@ -473,15 +473,20 @@
     PAC.State.savePlayerName();
   });
 
+  var _reinjectTimer = null;
+
   Events.on('scout:reinject', function() {
+    if (_reinjectTimer) clearTimeout(_reinjectTimer);
+
     // Reset extractor in page context
     window.postMessage({ type: 'PAC_RESET' }, '*');
     extractorInjected = false;
     PAC.State.isConnected = false;
     PAC.State.lastPoolData = null;
 
-    // Re-inject and restart
-    setTimeout(function() {
+    // Re-inject and restart (debounced)
+    _reinjectTimer = setTimeout(function() {
+      _reinjectTimer = null;
       _injectExtractor();
       if (isPolling) _restartPolling();
     }, 500);

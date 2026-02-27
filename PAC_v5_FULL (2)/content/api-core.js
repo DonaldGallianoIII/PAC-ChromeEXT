@@ -171,7 +171,9 @@
       if (!room) return null;
       if (_myPlayer) return _myPlayer;
 
-      var players = Array.from(room.state.players.$items.values());
+      var items = room.state.players && room.state.players.$items;
+      if (!items) return null;
+      var players = Array.from(items.values());
 
       // Strategy 1: Player name (from content script bridge)
       if (_playerName) {
@@ -393,6 +395,7 @@
      */
     function buildRuntimeCache(state) {
       if (_pokemonData) return {};
+      if (!state || !state.players || !state.players.$items) return {};
 
       var cache = {};
       state.players.$items.forEach(function(player) {
@@ -656,11 +659,14 @@
 
       // Collect all opponents
       var opponents = [];
-      state.players.$items.forEach(function(player) {
-        if (player.id !== me.id) {
-          opponents.push(extractOpponentState(player));
-        }
-      });
+      var playerItems = state.players && state.players.$items;
+      if (playerItems) {
+        playerItems.forEach(function(player) {
+          if (player.id !== me.id) {
+            opponents.push(extractOpponentState(player));
+          }
+        });
+      }
 
       var phase = Phase.detect();
 
@@ -1090,6 +1096,10 @@
     switch (type) {
       case 'equip_item':
         // {item: "MYSTIC_WATER", x: 2, y: 2}
+        if (typeof payload.x !== 'number' || typeof payload.y !== 'number') {
+          warn('equip_item: invalid x/y coordinates');
+          return false;
+        }
         var equipIndex = payload.x + payload.y * BOARD_WIDTH;
         Room.send('DRAG_DROP_ITEM', {
           zone: 'board-zone',
@@ -1281,7 +1291,9 @@
     mask: function() {
       var me = Room.getMyPlayer();
       if (!me) return null;
-      return buildActionMask(me, Phase.detect(), Room.get().state);
+      var room = Room.get();
+      if (!room || !room.state) return null;
+      return buildActionMask(me, Phase.detect(), room.state);
     },
 
     command: function(type, payload) { return command(type, payload); },

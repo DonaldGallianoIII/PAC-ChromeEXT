@@ -2200,7 +2200,5 @@ PAC.Data.POKEMON_TO_BASE = {
   "CLODSIRE": "PALDEAWOOPER",
 };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Data: Evolution chains loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Data: Evolution chains loaded');
 })();

@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Flash Alert Handler
+ * PAC v5 — Flash Alert Handler
  *
  * Listens for extraction:updated events and checks if
  * the player's shop contains their target or team targets.
@@ -149,7 +149,5 @@
     }
   });
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Engine: Flash alerts loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Engine: Flash alerts loaded');
 })();

@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Hunt Engine v5
+ * PAC v5 — Hunt Engine
  *
  * Reads shop from extraction data (Colyseus state), clicks DOM slots.
  * Cooldown-based 11ms loop. Scans every tick for instant buys.

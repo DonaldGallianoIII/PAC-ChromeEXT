@@ -1,5 +1,5 @@
 /**
- * PAC v4 — WebSocket Interceptor
+ * PAC v5 — WebSocket Interceptor
  * 
  * Injected into PAGE CONTEXT (like extractor.js) via web_accessible_resources.
  * Monkey-patches WebSocket to capture the game's sessionId from WS connections.

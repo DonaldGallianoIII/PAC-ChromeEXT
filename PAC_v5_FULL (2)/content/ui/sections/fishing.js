@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — Fishing Section
+ * PAC v5 — Fishing Section
  * Rod selection, Mantyke/Octillery/Remoraid auto-detect, odds with
  * Remoraid pre-roll (Mantine OR wild boost), fishable pool display.
  */

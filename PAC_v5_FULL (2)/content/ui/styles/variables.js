@@ -1,5 +1,5 @@
 /**
- * PAC v4 — CSS Variables (vmin-scaled, matched to prototype)
+ * PAC v5 — CSS Variables (vmin-scaled, matched to prototype)
  */
 (function() {
   'use strict';
