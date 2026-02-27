@@ -1,0 +1,98 @@
+{
+  "manifest_version": 3,
+  "name": "Pokemon Auto Chess Live Data Calculator",
+  "version": "5.0.0",
+  "description": "Real-time probability calculator for Pokemon Auto Chess",
+  "author": "Galliano Games",
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "permissions": ["activeTab", "storage"],
+
+  "host_permissions": [
+    "*://*.pokemon-auto-chess.com/*",
+    "*://pokemon-auto-chess.com/*"
+  ],
+
+
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.pokemon-auto-chess.com/*",
+        "*://pokemon-auto-chess.com/*"
+      ],
+      "js": [
+        "content/namespace.js",
+
+        "content/data/constants.js",
+        "content/data/pokemon.js",
+        "content/data/evolutions.js",
+
+        "content/utils/pokemon.js",
+
+        "content/core/state.js",
+        "content/core/calculator.js",
+
+        "content/ui/styles/variables.js",
+        "content/ui/styles/base.js",
+        "content/ui/styles/phone.js",
+        "content/ui/styles/slideout.js",
+        "content/ui/styles/sections.js",
+        "content/ui/styles/animations.js",
+
+        "content/ui/engine/events.js",
+        "content/ui/engine/drag.js",
+        "content/ui/engine/phone-hub.js",
+        "content/ui/engine/slide-out.js",
+        "content/ui/engine/flash-alerts.js",
+        "content/ui/engine/game-interaction.js",
+        "content/ui/engine/detection.js",
+        "content/ui/engine/extraction-bridge.js",
+        "content/ui/engine/mlg.js",
+        "content/ui/engine/hunt.js",
+        "content/ui/engine/api.js",
+        "content/ui/engine/keybinds.js",
+        "content/ui/engine/cli.js",
+
+        "lib/supabase.min.js",
+        "content/ui/engine/chat.js",
+
+        "content/ui/components/autocomplete.js",
+        "content/ui/components/notification.js",
+
+        "content/ui/sections/setup.js",
+        "content/ui/sections/search.js",
+        "content/ui/sections/cmd.js",
+        "content/ui/sections/team.js",
+        "content/ui/sections/intel.js",
+        "content/ui/sections/analytics.js",
+        "content/ui/sections/chat.js",
+        "content/ui/sections/fishing.js",
+        "content/ui/sections/settings.js",
+        "content/ui/sections/eula.js",
+        "content/ui/sections/guide.js",
+
+        "content/ui/engine/workspace.js",
+
+        "content/main.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/extractor.js",
+        "content/ws-interceptor.js",
+        "content/api-core.js",
+        "content/keybind-core.js"
+      ],
+      "matches": ["*://*.pokemon-auto-chess.com/*", "*://pokemon-auto-chess.com/*"]
+    }
+  ]
+}
