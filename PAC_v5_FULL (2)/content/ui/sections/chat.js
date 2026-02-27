@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Chat Section
+ * PAC v5 — Chat Section
  *
  * Two-tab chat panel: Global (all PAC users) and Match (current game).
  * Messages styled to match PAC's glass aesthetic.

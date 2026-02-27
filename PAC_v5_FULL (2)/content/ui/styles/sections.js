@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Section Content Styles
+ * PAC v5 — Section Content Styles
  * Ported from v3's battle-tested px-based design system.
  * Colors adapted to v4 teal/glass theme.
  */

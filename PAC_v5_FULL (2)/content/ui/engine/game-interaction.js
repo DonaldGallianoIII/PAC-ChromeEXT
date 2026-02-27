@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Game Interaction Handler
+ * PAC v5 — Game Interaction Handler
  *
  * Manages DOM overlays on the game page itself (not PAC panels).
  * Handles: mono-type shop blockers, random draft slot highlight,
@@ -1016,7 +1016,5 @@
     if (e.altKey) e.preventDefault();
   }, true);
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Engine: Game interaction handler loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Engine: Game interaction handler loaded');
 })();

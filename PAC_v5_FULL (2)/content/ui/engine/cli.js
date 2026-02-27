@@ -205,7 +205,7 @@
     'speed':   { tier: 3, aliases: ['anim', 'animation'], handler: _execSpeed, usage: 'speed [off|fast|normal|slow|<ms>]' },
 
     // Workspace
-    'panel':     { tier: 2, aliases: ['p'], handler: _execPanel, usage: 'panel <id> [x,y] [WxH] | panel close/closeall/list/reset' },
+    'panel':     { tier: 2, aliases: ['pn'], handler: _execPanel, usage: 'panel <id> [x,y] [WxH] | panel close/closeall/list/reset' },
     'ui':        { tier: 1, aliases: [], handler: _execUI, usage: 'ui <on|off|toggle>' },
     'workspace': { tier: 2, aliases: ['ws', 'layout'], handler: _execWorkspace, usage: 'workspace save|load|list|delete|export|import <name>' }
   };

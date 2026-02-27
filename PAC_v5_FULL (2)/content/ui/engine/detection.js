@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Detection Scanner (ported from v3.2.1)
+ * PAC v5 — Detection Scanner
  *
  * Attaches mouseenter listeners on portal icons in the game DOM.
  * When user hovers, waits 150ms for tooltip to render, then reads
@@ -435,7 +435,7 @@
     _checkForNewGame();
   }
 
-  setInterval(_pollLoop, 2000);
+  var _pollIntervalId = setInterval(_pollLoop, 2000);
   _pollLoop();
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -463,7 +463,5 @@
   // Reset on new game event
   Events.on('extraction:newGame', _resetDetection);
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Engine: Detection scanner loaded (v3.2.1 port)');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Engine: Detection scanner loaded (v3.2.1 port)');
 })();

@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — CMD Section
+ * PAC v5 — CMD Section
  * Terminal-styled control center.
  *
  * Two sections:
@@ -21,7 +21,6 @@
     { key: 'analytics', label: 'Analytics',     emoji: '📈' },
     { key: 'chat',      label: 'Chat',          emoji: '💬' },
     { key: 'fishing',   label: 'Fishing',       emoji: '🐟' },
-    { key: 'bot',       label: 'Bot',           emoji: '🤖' },
     { key: 'keybinds',  label: 'Keybinds',      emoji: '⌨️' },
     { key: 'settings',  label: 'Settings',      emoji: '⚙️' }
   ];

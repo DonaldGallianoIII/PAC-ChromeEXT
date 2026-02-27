@@ -1,5 +1,5 @@
 /**
- * PAC v4.1 — Search Section
+ * PAC v5 — Search Section
  * Unified search → results panel. Merges target + pool + results.
  *
  * Default view: Search bar + Results + Confidence slider.
@@ -208,29 +208,41 @@
       // (Level, rarity, evo, wild config — all auto-detected from extraction + pokemon data)
       // (Manual overrides removed — math proof in CMD shows the work)
 
-      // ── Listen for extraction updates ───────────────────────────
-      PAC.UI.Events.on('extraction:updated', function(data) {
-        if (!data) return;
-        if (data.ownedCount !== undefined) {
-          state.copiesTaken = data.ownedCount;
-        }
-        if (data.stage !== undefined) {
-          state.currentStage = data.stage;
-        }
-        _recalculate();
-      });
-
-      // ── Listen for external team changes (quick-add, etc) ──────
-      PAC.UI.Events.on('state:teamChanged', function() {
-        _renderTracker();
-        _recalculate();
-      });
+      // ── Attach event listeners (once only) ─────────────────────
+      _attachSearchListeners();
 
 
       // Render any persisted team targets
       _renderTracker();
     }
   };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVENT LISTENERS (registered once)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  var _searchListenersAttached = false;
+
+  function _attachSearchListeners() {
+    if (_searchListenersAttached) return;
+    _searchListenersAttached = true;
+
+    PAC.UI.Events.on('extraction:updated', function(data) {
+      if (!data) return;
+      if (data.ownedCount !== undefined) {
+        state.copiesTaken = data.ownedCount;
+      }
+      if (data.stage !== undefined) {
+        state.currentStage = data.stage;
+      }
+      _recalculate();
+    });
+
+    PAC.UI.Events.on('state:teamChanged', function() {
+      _renderTracker();
+      _recalculate();
+    });
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // POKEMON SELECTION

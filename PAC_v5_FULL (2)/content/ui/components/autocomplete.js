@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Autocomplete Component
+ * PAC v5 — Autocomplete Component
  *
  * Reusable pokemon search dropdown.
  * Used by Target panel and Team panel.
@@ -311,7 +311,5 @@
     }
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Components: Autocomplete loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Components: Autocomplete loaded');
 })();

@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Team Panel
+ * PAC v5 — Team Panel
  *
  * Multi-target tracker with per-target probability,
  * combined probability, and challenge mode sub-panels.
@@ -345,10 +345,11 @@
       var totalPoolSize = relevantPool + otherPool;
 
       // Wild calculation
-      var wildCountsForRarity = totalWildCounts[target.rarity];
+      var wildCountsForRarity = totalWildCounts[target.rarity] || { twoStar: 0, threeStar: 0 };
+      var poolCopiesForRarity = Data.POOL_COPIES[target.rarity] || { twoStar: 0, threeStar: 0 };
       var totalWildCopiesBefore = target.evo === 'twoStar' ?
-        wildCountsForRarity.twoStar * Data.POOL_COPIES[target.rarity].twoStar :
-        wildCountsForRarity.threeStar * Data.POOL_COPIES[target.rarity].threeStar;
+        wildCountsForRarity.twoStar * poolCopiesForRarity.twoStar :
+        wildCountsForRarity.threeStar * poolCopiesForRarity.threeStar;
       var wildScoutedForRarity = state.wildUnitsTaken[target.rarity] || 0;
       var totalWildCopies = Math.max(0, totalWildCopiesBefore - wildScoutedForRarity);
 
@@ -583,7 +584,5 @@
     _clearAllTargets();
   });
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Panels: Team loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Panels: Team loaded');
 })();

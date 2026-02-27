@@ -1,5 +1,5 @@
 /**
- * PAC v4 — MLG Effects Engine
+ * PAC v5 — MLG Effects Engine
  *
  * Cosmetic visual chaos effects triggered by:
  *   - Target found in shop (SNIPED)
@@ -16,6 +16,7 @@
   var Events = PAC.UI.Events;
 
   var _mlgLastFP = '';
+  var _chaosIntervalId = null;
 
   var MLG_TEXTS = [
     'MOM GET THE CAMERA', 'GET REKT', '360 NO SCOPE', 'SHREKT',
@@ -219,10 +220,12 @@
     var interval = 100;
     var elapsed = 0;
 
-    var chaosInterval = setInterval(function() {
+    if (_chaosIntervalId) clearInterval(_chaosIntervalId);
+    _chaosIntervalId = setInterval(function() {
       elapsed += interval;
       if (elapsed >= duration || !state.mlgModeEnabled) {
-        clearInterval(chaosInterval);
+        clearInterval(_chaosIntervalId);
+        _chaosIntervalId = null;
         return;
       }
 
@@ -336,7 +339,5 @@
     clearAll: _clearAll
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Engine: MLG effects loaded');
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Engine: MLG effects loaded');
 })();

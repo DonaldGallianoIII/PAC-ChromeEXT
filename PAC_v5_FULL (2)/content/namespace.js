@@ -1,8 +1,8 @@
 /**
- * PAC Live Data Calculator - Namespace v4.0
+ * PAC Live Data Calculator - Namespace v5.0
  *
  * MUST be loaded first. Establishes shared namespace for all modules.
- * v4: Added UI sub-namespaces for modular panel system.
+ * v5: Added UI sub-namespaces for modular panel system.
  */
 (function() {
   'use strict';
@@ -29,7 +29,5 @@
   // Features namespace
   PAC.Features = {};
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Namespace initialized v' + PAC.VERSION);
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Namespace initialized v' + PAC.VERSION);
 })();

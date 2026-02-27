@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Detail Panel (Slide-Out)
+ * PAC v5 — Detail Panel (Slide-Out)
  * Same-size glass card BEHIND the phone (z:0).
  * Translates 101% left or right based on overlay position.
  * "‹ Back" to close.

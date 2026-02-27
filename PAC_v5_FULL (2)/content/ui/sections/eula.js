@@ -1,5 +1,5 @@
 /**
- * PAC v4 — EULA & User Guide
+ * PAC v5 — EULA & User Guide
  *
  * Two-panel modal:
  *   Left  — Legal agreement, privacy, disclaimers, checkboxes

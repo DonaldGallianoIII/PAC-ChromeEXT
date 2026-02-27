@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Main Entry Point
+ * PAC v5 — Main Entry Point
  *
  * Boot sequence:
  * 1. Verify modules
@@ -16,12 +16,12 @@
 
   // Verify core modules
   if (!window.PAC || !PAC.Data || !PAC.Utils || !PAC.State || !PAC.Calc || !PAC.UI) {
-    console.error('PAC v4: Missing core modules');
+    console.error('PAC v5: Missing core modules');
     return;
   }
 
   if (!PAC.UI.Engine.PhoneHub || !PAC.UI.Engine.SlideOut || !PAC.UI.Engine.Drag) {
-    console.error('PAC v4: Missing UI engine modules');
+    console.error('PAC v5: Missing UI engine modules');
     return;
   }
 
@@ -29,7 +29,7 @@
     if (hasStarted) return;
     hasStarted = true;
 
-    if (PAC.DEBUG_MODE) console.log('🚀 PAC v4 starting...');
+    if (PAC.DEBUG_MODE) console.log('🚀 PAC v5 starting...');
 
     // Load saved state
     PAC.State.loadPlayerName();
@@ -54,10 +54,8 @@
       if (PAC.DEBUG_MODE) console.log('📜 EULA accepted');
     }
 
-    if (PAC.DEBUG_MODE) {
-      if (PAC.DEBUG_MODE) console.log('✅ PAC v4 initialized');
-      if (PAC.DEBUG_MODE) console.log('📱 Sections available:', Object.keys(PAC.UI.Sections));
-    }
+    if (PAC.DEBUG_MODE) console.log('✅ PAC v5 initialized');
+    if (PAC.DEBUG_MODE) console.log('📱 Sections available:', Object.keys(PAC.UI.Sections));
   }
 
   // Start when DOM is ready
@@ -84,7 +82,5 @@
     }
   };
 
-  if (PAC.DEBUG_MODE) {
-    if (PAC.DEBUG_MODE) console.log('PAC Main: Entry point loaded v' + PAC.VERSION);
-  }
+  if (PAC.DEBUG_MODE) console.log('PAC Main: Entry point loaded v' + PAC.VERSION);
 })();

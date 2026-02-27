@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Chat Engine
+ * PAC v5 — Chat Engine
  *
  * Manages Supabase Realtime chat for global + match channels.
  * Injects ws-interceptor.js to capture match sessionId.

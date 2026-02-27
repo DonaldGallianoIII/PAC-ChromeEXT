@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Animations
+ * PAC v5 — Animations
  */
 (function() {
   'use strict';

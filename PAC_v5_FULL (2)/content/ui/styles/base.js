@@ -1,5 +1,5 @@
 /**
- * PAC v4 — Base Styles
+ * PAC v5 — Base Styles
  */
 (function() {
   'use strict';
