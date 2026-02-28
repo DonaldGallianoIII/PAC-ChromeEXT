@@ -155,7 +155,7 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages,
-      max_completion_tokens: 300,
+      max_completion_tokens: 2000,
     }),
   });
 
@@ -166,9 +166,7 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   }
 
   const data = await response.json();
-  console.log("OpenAI raw response:", JSON.stringify(data));
   const raw = data.choices?.[0]?.message?.content?.trim() || "";
-  console.log("Extracted content:", raw);
 
   let reply = "Hey, something went wrong on my end. Try again?";
   let category = "chat";
@@ -179,7 +177,6 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   } catch {
     reply = raw || reply;
   }
-  console.log("Final reply:", reply, "| category:", category);
 
   let feedbackId = null;
   if (category !== "chat") {
@@ -237,7 +234,7 @@ ${body.context ? `\nRelevant context:\n${body.context}` : ""}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: body.question },
       ],
-      max_completion_tokens: 1000,
+      max_completion_tokens: 4000,
     }),
   });
 
