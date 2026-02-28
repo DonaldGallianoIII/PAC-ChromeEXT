@@ -53,6 +53,7 @@
   // ── Cursor animations ──
   var _styleInjected = false;
   var _breatheTimer = null;
+  var _scrollTarget = null;   // Cached .pac-detail-body for right-stick scroll
 
   // ── Button Bindings ──
   var _bindCaptureMode = false;
@@ -1136,8 +1137,8 @@
         break;
 
       case 'PAC_GAMEPAD_SCROLL':
-        var scrollTarget = document.querySelector('.pac-detail-body');
-        if (scrollTarget) scrollTarget.scrollTop += e.data.delta;
+        if (!_scrollTarget) _scrollTarget = document.querySelector('.pac-detail-body');
+        if (_scrollTarget) _scrollTarget.scrollTop += e.data.delta;
         break;
 
       case 'PAC_GAMEPAD_BIND_CAPTURED':
