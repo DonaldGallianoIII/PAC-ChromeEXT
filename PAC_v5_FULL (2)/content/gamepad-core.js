@@ -670,27 +670,11 @@
    * Handle a button press event (transition from unpressed to pressed).
    */
   function _onPress(button) {
-    if (_context === 'disabled') return;
-
-    // D-pad press → exit analog mode, return to grid
-    if (button >= 12 && button <= 15) {
-      if (_analogActive) {
-        if (_analogDragging) {
-          _dispatchMouse('mouseup', _analogX, _analogY);
-          _analogDragging = false;
-        }
-        _analogActive = false;
-        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
-      }
-    }
-
-    // A button → intercept in analog mode
+    // Analog mode A/B — works in ALL contexts (enables lobby/menu navigation)
     if (button === 0 && _analogActive) {
       _analogDown();
       return;
     }
-
-    // B button → intercept in analog mode
     if (button === 1 && _analogActive) {
       if (_analogDragging) {
         _dispatchMouse('mouseup', _analogX, _analogY);
@@ -704,6 +688,20 @@
         window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
       }
       return;
+    }
+
+    if (_context === 'disabled') return;
+
+    // D-pad press → exit analog mode, return to grid
+    if (button >= 12 && button <= 15) {
+      if (_analogActive) {
+        if (_analogDragging) {
+          _dispatchMouse('mouseup', _analogX, _analogY);
+          _analogDragging = false;
+        }
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
     }
 
     // RB → open hunt browser (works from any non-disabled, non-hunt context)
@@ -889,8 +887,8 @@
       _prevButtons[b] = curr;
     }
 
-    // ── Stick input (analog mode) ──
-    if (_context !== 'disabled' && gp.axes && gp.axes.length >= 2) {
+    // ── Stick input (analog mode — works in ALL contexts, including lobby) ──
+    if (gp.axes && gp.axes.length >= 2) {
       var stickX = gp.axes[0];
       var stickY = gp.axes[1];
       var magnitude = Math.sqrt(stickX * stickX + stickY * stickY);
