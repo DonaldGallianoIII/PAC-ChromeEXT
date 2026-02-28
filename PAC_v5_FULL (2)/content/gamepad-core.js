@@ -954,7 +954,8 @@
         // Scale movement by deflection with sensitivity curve
         var normX = stickX / magnitude;
         var normY = stickY / magnitude;
-        var raw = (magnitude - _deadzone) / (1 - _deadzone);
+        var clamped = Math.min(magnitude, 1.0); // Prevent diagonal speed boost
+        var raw = (clamped - _deadzone) / (1 - _deadzone);
         var curved = Math.pow(raw, _stickExponent);
         var speed = _analogSpeed * curved;
 
