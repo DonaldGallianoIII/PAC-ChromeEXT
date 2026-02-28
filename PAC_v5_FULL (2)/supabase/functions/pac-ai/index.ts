@@ -59,6 +59,34 @@ interface FeedbackRequest {
 
 type PacRequest = ChatRequest | RagRequest | FeatureRequest | FeedbackRequest;
 
+// ─── Model-Agnostic Helpers ──────────────────────────────────────────────────
+// Reasoning models (nano, gpt-5, o1, o3) use max_completion_tokens, no temperature.
+// Non-reasoning models (gpt-4o-mini, gpt-4o, gpt-4.1, etc.) use max_tokens + temperature.
+
+function isReasoningModel(model: string): boolean {
+  const m = model.toLowerCase();
+  return m.includes("nano") || m.startsWith("o1") || m.startsWith("o3") ||
+    (m.startsWith("gpt-5") && !m.includes("mini"));
+}
+
+function buildChatBody(
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  maxTokens: number
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { model, messages };
+
+  if (isReasoningModel(model)) {
+    body.max_completion_tokens = maxTokens;
+    // No temperature — reasoning models only accept default (1)
+  } else {
+    body.max_tokens = maxTokens;
+    body.temperature = 0.8;
+  }
+
+  return body;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -139,11 +167,7 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages,
-      max_completion_tokens: 2000,
-    }),
+    body: JSON.stringify(buildChatBody(OPENAI_MODEL, messages, 2000)),
   });
 
   if (!response.ok) {
@@ -212,20 +236,18 @@ Keep answers concise and helpful. If you don't know something, say so — don't 
 
 ${body.context ? `\nRelevant context:\n${body.context}` : ""}`;
 
+  const ragMessages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: body.question },
+  ];
+
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: body.question },
-      ],
-      max_completion_tokens: 4000,
-    }),
+    body: JSON.stringify(buildChatBody(OPENAI_MODEL, ragMessages, 4000)),
   });
 
   if (!response.ok) {
