@@ -61,6 +61,9 @@
   // ── Hunt browser ──
   var _preHuntContext = 'shop';   // Context to restore when hunt closes
 
+  // ── Direct DOM cursor (bypasses postMessage latency) ──
+  var _cursorDOM = null;
+
   // ── Haptic feedback ──
   var _hapticsEnabled = true;
   var HAPTICS = {
@@ -711,9 +714,9 @@
     _analogDragStartX = _analogX;
     _analogDragStartY = _analogY;
     _dispatchMouse('mousedown', _analogX, _analogY);
+    // Notify content script of drag state change (infrequent)
     window.postMessage({
-      type: 'PAC_GAMEPAD_ANALOG_CURSOR',
-      x: _analogX, y: _analogY, dragging: true
+      type: 'PAC_GAMEPAD_ANALOG_DRAG', dragging: true
     }, '*');
   }
 
@@ -741,10 +744,7 @@
       if (_analogDragging) {
         _dispatchMouse('mouseup', _analogX, _analogY);
         _analogDragging = false;
-        window.postMessage({
-          type: 'PAC_GAMEPAD_ANALOG_CURSOR',
-          x: _analogX, y: _analogY, dragging: false
-        }, '*');
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DRAG', dragging: false }, '*');
       } else {
         _analogActive = false;
         window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
@@ -815,10 +815,7 @@
         _dispatchMouse('click', _analogX, _analogY);
       }
       _analogDragging = false;
-      window.postMessage({
-        type: 'PAC_GAMEPAD_ANALOG_CURSOR',
-        x: _analogX, y: _analogY, dragging: false
-      }, '*');
+      window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DRAG', dragging: false }, '*');
     }
   }
 
@@ -965,11 +962,12 @@
         _analogX = Math.max(0, Math.min(window.innerWidth - 1, _analogX));
         _analogY = Math.max(0, Math.min(window.innerHeight - 1, _analogY));
 
-        // Send position to content script for visual
-        window.postMessage({
-          type: 'PAC_GAMEPAD_ANALOG_CURSOR',
-          x: _analogX, y: _analogY, dragging: _analogDragging
-        }, '*');
+        // Move cursor directly via DOM (zero latency — no postMessage async delay)
+        if (!_cursorDOM) _cursorDOM = document.getElementById('pac-gamepad-cursor');
+        if (_cursorDOM) {
+          _cursorDOM.style.left = (_analogX - 14) + 'px';
+          _cursorDOM.style.top = (_analogY - 14) + 'px';
+        }
 
         // Dispatch mousemove: every frame while dragging,
         // every 3rd frame otherwise (for hover states without 60fps spam)
