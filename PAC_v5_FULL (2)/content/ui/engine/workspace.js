@@ -26,7 +26,7 @@
   var MIN_W = 300;
   var MIN_H = 250;
 
-  var PANEL_SECTIONS = ['search', 'team', 'intel', 'analytics', 'chat', 'fishing', 'settings', 'keybinds', 'guide'];
+  var PANEL_SECTIONS = ['search', 'team', 'intel', 'analytics', 'chat', 'fishing', 'settings', 'keybinds', 'gamepad', 'guide'];
 
   var APP_META = {
     search:    { emoji: '🎯', name: 'Search' },
