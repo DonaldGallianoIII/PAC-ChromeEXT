@@ -11,11 +11,14 @@
  * Left stick drives analog mouse emulation — moves a cursor in pixel space and
  * synthesizes pointer/mouse events for click and drag on any element.
  *
+ * RB opens the hunt browser overlay (new 'hunt' context). In hunt context, all
+ * button presses are forwarded to the content script via PAC_GAMEPAD_HUNT_BUTTON.
+ *
  * Button presses fire on transition (pressed: false → true) to prevent 60fps
  * repeat-fire. D-pad supports hold-to-repeat (300ms delay, 80ms repeat).
  *
  * @author Donald Galliano III × Cassy
- * @version 1.3 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board) + Phase 4 (Stick Mouse)
+ * @version 1.4 — Phase 1-4 + Phase 5 (Hunt Browser)
  */
 (function() {
   'use strict';
@@ -29,7 +32,7 @@
   // ════════════════════════════════════════
 
   var _enabled = true;        // Toggled by content script via PAC_GAMEPAD_ENABLE
-  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'disabled'
+  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'hunt' | 'disabled'
   var _shopCursor = 0;        // Current shop slot (0-based)
   var _maxShopSlots = 6;      // Updated by content script via PAC_GAMEPAD_SLOT_COUNT
   var _prevButtons = [];      // Previous frame button states (16 booleans)
@@ -54,6 +57,9 @@
   var _analogDragStartY = 0;
   var _analogSpeed = 12;          // Pixels per frame at full deflection
   var _deadzone = 0.15;           // Stick deadzone threshold
+
+  // ── Hunt browser ──
+  var _preHuntContext = 'shop';   // Context to restore when hunt closes
 
 
   // ════════════════════════════════════════
@@ -106,6 +112,8 @@
           else if (button === 12) dy = -1;
           else if (button === 13) dy = 1;
           _moveBoardCursor(dx, dy);
+        } else if (startContext === 'hunt') {
+          window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
         }
       }, 80);
     }, 300);
@@ -421,6 +429,33 @@
 
 
   // ════════════════════════════════════════
+  // CONTEXT HELPERS
+  // ════════════════════════════════════════
+
+  /**
+   * Send cursor position message for the current context.
+   * Extracted as helper so _detectContext and HUNT_CLOSE handler can share it.
+   */
+  function _sendCursorForContext() {
+    if (_context === 'shop') {
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR', context: 'shop', index: _shopCursor
+      }, '*');
+    } else if (_context === 'pick') {
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR', context: 'pick', index: _pickCursor
+      }, '*');
+    } else if (_context === 'board') {
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR', context: 'board',
+        index: _boardCursorY * 8 + _boardCursorX,
+        x: _boardCursorX, y: _boardCursorY, grabbed: !!_grabbedUnitId
+      }, '*');
+    }
+  }
+
+
+  // ════════════════════════════════════════
   // CONTEXT AUTO-DETECTION
   // ════════════════════════════════════════
 
@@ -436,7 +471,7 @@
 
     if (phase === 'shop') {
       // Don't force shop if user manually toggled to board
-      newContext = (_context === 'board') ? 'board' : 'shop';
+      newContext = (_context === 'board' || _context === 'hunt') ? _context : 'shop';
     } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
       newContext = 'pick';
     } else {
@@ -445,6 +480,12 @@
 
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
+
+      // Force-close hunt overlay if leaving hunt context
+      if (_context === 'hunt' && newContext !== 'hunt') {
+        window.postMessage({ type: 'PAC_GAMEPAD_HUNT_FORCE_CLOSE' }, '*');
+      }
+
       if (_grabbedUnitId) _clearGrab(); // Clear grab on any context change
       if (_analogActive) {
         if (_analogDragging) {
@@ -468,28 +509,7 @@
       }, '*');
 
       // Send initial cursor position for the new context
-      if (newContext === 'pick') {
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'pick',
-          index: _pickCursor
-        }, '*');
-      } else if (newContext === 'shop') {
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'shop',
-          index: _shopCursor
-        }, '*');
-      } else if (newContext === 'board') {
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'board',
-          index: _boardCursorY * 8 + _boardCursorX,
-          x: _boardCursorX,
-          y: _boardCursorY,
-          grabbed: false
-        }, '*');
-      }
+      _sendCursorForContext();
     }
   }
 
@@ -585,10 +605,33 @@
       return;
     }
 
-    // Grid mode routing (existing Phase 1-3 logic)
+    // RB → open hunt browser (works from any non-disabled, non-hunt context)
+    if (button === 5 && _context !== 'disabled' && _context !== 'hunt') {
+      if (_analogActive) {
+        if (_analogDragging) {
+          _dispatchMouse('mouseup', _analogX, _analogY);
+          _analogDragging = false;
+        }
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
+      _preHuntContext = _context;
+      _context = 'hunt';
+      _cancelAllHoldTimers();
+      if (_grabbedUnitId) _clearGrab();
+      window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'hunt' }, '*');
+      return;
+    }
+
+    // Grid mode routing
     if (_context === 'shop') _shopPress(button);
     else if (_context === 'pick') _pickPress(button);
     else if (_context === 'board') _boardPress(button);
+    else if (_context === 'hunt') {
+      window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
+      if (button >= 12 && button <= 15) _startHoldRepeat(button);
+      return;
+    }
   }
 
   /**
@@ -868,6 +911,15 @@
 
     if (e.data.type === 'PAC_GAMEPAD_ANALOG_DEADZONE') {
       _deadzone = e.data.deadzone || 0.15;
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_HUNT_CLOSE') {
+      if (_context === 'hunt') {
+        _context = _preHuntContext;
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
+        _sendCursorForContext();
+      }
       return;
     }
   });

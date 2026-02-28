@@ -7,7 +7,7 @@
  * and the gamepad settings panel as PAC.UI.Sections.gamepad.
  *
  * @author Donald Galliano III × Cassy
- * @version 1.3 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board) + Phase 4 (Stick Mouse)
+ * @version 1.4 — Phase 1-4 + Phase 5 (Hunt Browser)
  */
 (function() {
   'use strict';
@@ -29,6 +29,23 @@
   var _boardGrabbed = false;
   var _boardLayout = null;       // Cached pixel layout, invalidated on resize
   var _analogMode = false;       // Whether analog cursor is active (visual state)
+
+  // ── Hunt Browser State ──
+  var _huntOpen = false;
+  var _huntScreen = 'mode';        // 'mode' | 'pokemon' | 'config'
+  var _huntMode = 'single';        // 'single' | 'team'
+  var _huntModeIndex = 0;          // 0=Single, 1=Team, 2=Abort (if active)
+  var _huntModeCount = 2;          // 2 or 3 depending on hunt active
+  var _huntRarityIndex = 0;
+  var _huntListIndex = 0;
+  var _huntFilteredList = [];
+  var _huntRarities = ['common', 'uncommon', 'rare', 'epic', 'ultra', 'unique', 'legendary', 'special', 'hatch'];
+  var _huntTarget = '';
+  var _huntQty = 3;
+  var _huntBudget = 20;
+  var _huntConfigField = 0;        // 0=qty, 1=budget
+  var _huntOverlayEl = null;
+  var HUNT_LIST_VISIBLE = 8;
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -301,6 +318,373 @@
   }
 
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HUNT BROWSER OVERLAY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _createHuntOverlay() {
+    if (_huntOverlayEl) return;
+    _huntOverlayEl = document.createElement('div');
+    _huntOverlayEl.id = 'pac-hunt-browser';
+    _huntOverlayEl.style.cssText =
+      'position:fixed;z-index:2147483645;' +
+      'left:50%;top:50%;transform:translate(-50%,-50%);' +
+      'background:rgba(10,12,18,0.96);' +
+      'border:1px solid rgba(48,213,200,0.3);border-radius:12px;padding:16px;' +
+      'box-shadow:0 8px 32px rgba(0,0,0,0.6),0 0 16px rgba(48,213,200,0.15);' +
+      'backdrop-filter:blur(12px);' +
+      'min-width:340px;max-width:480px;' +
+      'font-family:monospace;color:#fff;pointer-events:none;';
+    document.body.appendChild(_huntOverlayEl);
+  }
+
+  function _destroyHuntOverlay() {
+    if (_huntOverlayEl) { _huntOverlayEl.remove(); _huntOverlayEl = null; }
+  }
+
+
+  // ── Screen Renderers ──
+
+  function _renderModeScreen() {
+    if (!_huntOverlayEl) return;
+
+    _huntModeCount = PAC.UI.Engine.Hunt.isActive() ? 3 : 2;
+    if (_huntModeIndex >= _huntModeCount) _huntModeIndex = 0;
+
+    var options = ['Single Target', 'Team Hunt'];
+    if (_huntModeCount === 3) options.push('Abort Hunt');
+
+    var html =
+      '<div style="font-size:13px;color:rgba(48,213,200,0.9);margin-bottom:12px;text-align:center;">HUNT BROWSER</div>';
+
+    for (var i = 0; i < options.length; i++) {
+      var selected = (i === _huntModeIndex);
+      var color = (i === 2) ? 'rgba(255,100,100,0.9)' : (selected ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)');
+      var bg = selected ? 'rgba(48,213,200,0.1)' : 'transparent';
+      var border = selected ? '1px solid rgba(48,213,200,0.3)' : '1px solid transparent';
+      html += '<div style="padding:8px 12px;margin:4px 0;border-radius:6px;' +
+        'background:' + bg + ';border:' + border + ';color:' + color + ';font-size:12px;">' +
+        (selected ? '\u25B6 ' : '  ') + options[i] + '</div>';
+    }
+
+    html += '<div style="margin-top:12px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">' +
+      '\u25B2\u25BC Select  \u00B7  A Confirm  \u00B7  B/RB Close</div>';
+
+    _huntOverlayEl.innerHTML = html;
+  }
+
+  function _renderPokemonScreen() {
+    if (!_huntOverlayEl) return;
+
+    var html =
+      '<div style="font-size:13px;color:rgba(48,213,200,0.9);margin-bottom:8px;text-align:center;">SELECT POKEMON</div>';
+
+    // Rarity tabs
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">';
+    for (var r = 0; r < _huntRarities.length; r++) {
+      var sel = (r === _huntRarityIndex);
+      var tabColor = sel ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.3)';
+      var tabBg = sel ? 'rgba(48,213,200,0.12)' : 'transparent';
+      html += '<span style="font-size:9px;padding:2px 6px;border-radius:3px;' +
+        'color:' + tabColor + ';background:' + tabBg + ';' +
+        'border:1px solid ' + (sel ? 'rgba(48,213,200,0.3)' : 'transparent') + ';">' +
+        _huntRarities[r].toUpperCase() + '</span>';
+    }
+    html += '</div>';
+
+    // Pokemon list (scrolling window)
+    if (_huntFilteredList.length === 0) {
+      html += '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);font-size:11px;">No pokemon in this rarity</div>';
+    } else {
+      var start = Math.max(0, _huntListIndex - Math.floor(HUNT_LIST_VISIBLE / 2));
+      if (start + HUNT_LIST_VISIBLE > _huntFilteredList.length) {
+        start = Math.max(0, _huntFilteredList.length - HUNT_LIST_VISIBLE);
+      }
+      var end = Math.min(start + HUNT_LIST_VISIBLE, _huntFilteredList.length);
+
+      for (var p = start; p < end; p++) {
+        var pSel = (p === _huntListIndex);
+        var pColor = pSel ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.5)';
+        var pBg = pSel ? 'rgba(48,213,200,0.08)' : 'transparent';
+        html += '<div style="padding:4px 8px;font-size:11px;color:' + pColor +
+          ';background:' + pBg + ';border-radius:3px;">' +
+          (pSel ? '\u25B6 ' : '  ') + _huntFilteredList[p] + '</div>';
+      }
+
+      html += '<div style="text-align:right;font-size:9px;color:rgba(255,255,255,0.25);margin-top:4px;">' +
+        (_huntListIndex + 1) + ' / ' + _huntFilteredList.length + '</div>';
+    }
+
+    html += '<div style="margin-top:8px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">' +
+      '\u25C4\u25BA Rarity  \u00B7  \u25B2\u25BC Scroll  \u00B7  A Select  \u00B7  B Back</div>';
+
+    _huntOverlayEl.innerHTML = html;
+  }
+
+  function _renderConfigScreen() {
+    if (!_huntOverlayEl) return;
+
+    var html =
+      '<div style="font-size:13px;color:rgba(48,213,200,0.9);margin-bottom:12px;text-align:center;">CONFIGURE HUNT</div>';
+
+    if (_huntMode === 'single') {
+      // Show target name + rarity
+      var targetData = PAC.Data.POKEMON_DATA[_huntTarget];
+      var rarity = targetData ? targetData.rarity : '?';
+      html += '<div style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:12px;text-align:center;">' +
+        _huntTarget + ' <span style="color:rgba(48,213,200,0.6);">(' + rarity + ')</span></div>';
+
+      // Qty field
+      var qtySelected = (_huntConfigField === 0);
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;' +
+        'padding:8px 12px;margin:4px 0;border-radius:6px;' +
+        'background:' + (qtySelected ? 'rgba(48,213,200,0.08)' : 'transparent') + ';' +
+        'border:1px solid ' + (qtySelected ? 'rgba(48,213,200,0.3)' : 'transparent') + ';">' +
+        '<span style="font-size:11px;color:' + (qtySelected ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';">Quantity</span>' +
+        '<span style="font-size:13px;color:' + (qtySelected ? '#fff' : 'rgba(255,255,255,0.5)') + ';">\u25C4 ' + _huntQty + ' \u25BA</span></div>';
+
+      // Budget field
+      var budSelected = (_huntConfigField === 1);
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;' +
+        'padding:8px 12px;margin:4px 0;border-radius:6px;' +
+        'background:' + (budSelected ? 'rgba(48,213,200,0.08)' : 'transparent') + ';' +
+        'border:1px solid ' + (budSelected ? 'rgba(48,213,200,0.3)' : 'transparent') + ';">' +
+        '<span style="font-size:11px;color:' + (budSelected ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';">Budget</span>' +
+        '<span style="font-size:13px;color:' + (budSelected ? '#fff' : 'rgba(255,255,255,0.5)') + ';">\u25C4 ' + _huntBudget + 'g \u25BA</span></div>';
+    } else {
+      // Team hunt config — show targets + budget
+      var targets = PAC.State.state.teamTargets || [];
+      var enabled = targets.filter(function(t) { return t.enabled; });
+      html += '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:8px;">' +
+        'Team targets: ' + enabled.length + '</div>';
+
+      for (var i = 0; i < enabled.length && i < 6; i++) {
+        html += '<div style="font-size:10px;color:rgba(48,213,200,0.7);padding:2px 0;">' +
+          '\u2022 ' + (enabled[i].displayName || enabled[i].pokemon) + '</div>';
+      }
+      if (enabled.length > 6) {
+        html += '<div style="font-size:9px;color:rgba(255,255,255,0.3);">+' + (enabled.length - 6) + ' more</div>';
+      }
+
+      // Budget field (always selected in team mode)
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;' +
+        'padding:8px 12px;margin:8px 0 4px;border-radius:6px;' +
+        'background:rgba(48,213,200,0.08);border:1px solid rgba(48,213,200,0.3);">' +
+        '<span style="font-size:11px;color:rgba(48,213,200,0.9);">Budget</span>' +
+        '<span style="font-size:13px;color:#fff;">\u25C4 ' + _huntBudget + 'g \u25BA</span></div>';
+    }
+
+    html += '<div style="margin-top:12px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">';
+    if (_huntMode === 'single') {
+      html += '\u25B2\u25BC Field  \u00B7  \u25C4\u25BA \u00B11  \u00B7  LB -5  \u00B7  RB +5  \u00B7  A Launch  \u00B7  B Back';
+    } else {
+      html += '\u25C4\u25BA \u00B11  \u00B7  LB -5  \u00B7  RB +5  \u00B7  A Launch  \u00B7  B Back';
+    }
+    html += '</div>';
+
+    _huntOverlayEl.innerHTML = html;
+  }
+
+
+  // ── Hunt Helpers ──
+
+  function _filterPokemonByRarity(rarity) {
+    var names = Object.keys(PAC.Data.POKEMON_DATA);
+    _huntFilteredList = names.filter(function(name) {
+      return PAC.Data.POKEMON_DATA[name].rarity === rarity;
+    }).sort();
+    _huntListIndex = 0;
+  }
+
+  function _initBudgetDefault() {
+    var el = document.querySelector('.toast-player-income span');
+    if (el) {
+      var gold = parseInt(el.textContent, 10);
+      if (!isNaN(gold) && gold > 0) { _huntBudget = gold; return; }
+    }
+    _huntBudget = 20;
+  }
+
+  function _adjustConfigField(delta) {
+    if (_huntMode === 'team' || _huntConfigField === 1) {
+      _huntBudget = Math.max(1, _huntBudget + delta);
+    } else {
+      _huntQty = Math.max(1, Math.min(9, _huntQty + delta));
+    }
+  }
+
+
+  // ── Hunt Navigation Handlers ──
+
+  function _handleHuntButton(button) {
+    if (_huntScreen === 'mode') _handleModeNav(button);
+    else if (_huntScreen === 'pokemon') _handlePokemonNav(button);
+    else if (_huntScreen === 'config') _handleConfigNav(button);
+  }
+
+  function _handleModeNav(button) {
+    switch (button) {
+      case 12: // Up
+        _huntModeIndex = (_huntModeIndex - 1 + _huntModeCount) % _huntModeCount;
+        _renderModeScreen();
+        break;
+      case 13: // Down
+        _huntModeIndex = (_huntModeIndex + 1) % _huntModeCount;
+        _renderModeScreen();
+        break;
+      case 0: // A = confirm
+        if (_huntModeIndex === 0) {
+          // Single target → pokemon select
+          _huntMode = 'single';
+          _huntScreen = 'pokemon';
+          _huntRarityIndex = 0;
+          _filterPokemonByRarity(_huntRarities[0]);
+          _renderPokemonScreen();
+        } else if (_huntModeIndex === 1) {
+          // Team hunt → config
+          _huntMode = 'team';
+          _huntScreen = 'config';
+          _initBudgetDefault();
+          _renderConfigScreen();
+        } else if (_huntModeIndex === 2) {
+          // Abort active hunt
+          PAC.UI.Engine.Hunt.abort();
+          _closeHuntBrowser();
+        }
+        break;
+      case 1: // B = close
+      case 5: // RB = close (from mode screen)
+        _closeHuntBrowser();
+        break;
+    }
+  }
+
+  function _handlePokemonNav(button) {
+    switch (button) {
+      case 14: // Left — prev rarity tab
+        _huntRarityIndex = (_huntRarityIndex - 1 + _huntRarities.length) % _huntRarities.length;
+        _filterPokemonByRarity(_huntRarities[_huntRarityIndex]);
+        _renderPokemonScreen();
+        break;
+      case 15: // Right — next rarity tab
+        _huntRarityIndex = (_huntRarityIndex + 1) % _huntRarities.length;
+        _filterPokemonByRarity(_huntRarities[_huntRarityIndex]);
+        _renderPokemonScreen();
+        break;
+      case 12: // Up — scroll list up
+        if (_huntFilteredList.length > 0) {
+          _huntListIndex = (_huntListIndex - 1 + _huntFilteredList.length) % _huntFilteredList.length;
+          _renderPokemonScreen();
+        }
+        break;
+      case 13: // Down — scroll list down
+        if (_huntFilteredList.length > 0) {
+          _huntListIndex = (_huntListIndex + 1) % _huntFilteredList.length;
+          _renderPokemonScreen();
+        }
+        break;
+      case 0: // A = select pokemon
+        if (_huntFilteredList.length > 0) {
+          _huntTarget = _huntFilteredList[_huntListIndex];
+          _huntScreen = 'config';
+          _huntConfigField = 0;
+          _huntQty = 3;
+          _initBudgetDefault();
+          _renderConfigScreen();
+        }
+        break;
+      case 1: // B = back to mode
+        _huntScreen = 'mode';
+        _renderModeScreen();
+        break;
+    }
+  }
+
+  function _handleConfigNav(button) {
+    switch (button) {
+      case 12: // Up — prev field (single only)
+        if (_huntMode === 'single') {
+          _huntConfigField = (_huntConfigField === 0) ? 1 : 0;
+          _renderConfigScreen();
+        }
+        break;
+      case 13: // Down — next field (single only)
+        if (_huntMode === 'single') {
+          _huntConfigField = (_huntConfigField === 0) ? 1 : 0;
+          _renderConfigScreen();
+        }
+        break;
+      case 14: // Left — decrease by 1
+        _adjustConfigField(-1);
+        _renderConfigScreen();
+        break;
+      case 15: // Right — increase by 1
+        _adjustConfigField(1);
+        _renderConfigScreen();
+        break;
+      case 4: // LB — decrease by 5
+        _adjustConfigField(-5);
+        _renderConfigScreen();
+        break;
+      case 5: // RB — increase by 5
+        _adjustConfigField(5);
+        _renderConfigScreen();
+        break;
+      case 0: // A = launch
+        _launchHunt();
+        break;
+      case 1: // B = back
+        if (_huntMode === 'single') {
+          _huntScreen = 'pokemon';
+          _renderPokemonScreen();
+        } else {
+          _huntScreen = 'mode';
+          _renderModeScreen();
+        }
+        break;
+    }
+  }
+
+
+  // ── Hunt Launch + Open/Close ──
+
+  function _launchHunt() {
+    if (!PAC.UI.CMD || !PAC.UI.CMD.isHuntEnabled()) {
+      PAC.UI.Components.Notification.show('Hunt Mode disabled \u2014 enable in CMD', 'warning', 2000);
+      _closeHuntBrowser();
+      return;
+    }
+    if (_huntMode === 'single') {
+      PAC.UI.Engine.Hunt.start({
+        target: _huntTarget, qty: _huntQty, budget: _huntBudget, isTeamHunt: false
+      });
+    } else {
+      PAC.UI.Engine.Hunt.start({ budget: _huntBudget, isTeamHunt: true });
+    }
+    _closeHuntBrowser();
+  }
+
+  function _openHuntBrowser() {
+    if (_huntOpen) return true;
+    if (!PAC.UI.CMD || !PAC.UI.CMD.isHuntEnabled()) {
+      PAC.UI.Components.Notification.show('Hunt Mode disabled \u2014 enable in CMD', 'warning', 2000);
+      return false;
+    }
+    _huntOpen = true;
+    _huntScreen = 'mode';
+    _huntModeIndex = 0;
+    _createHuntOverlay();
+    _renderModeScreen();
+    return true;
+  }
+
+  function _closeHuntBrowser() {
+    _huntOpen = false;
+    _destroyHuntOverlay();
+    window.postMessage({ type: 'PAC_GAMEPAD_HUNT_CLOSE' }, '*');
+  }
+
+
   // Reposition cursor on window resize
   window.addEventListener('resize', function() {
     _boardLayout = null;   // Force recalculation
@@ -452,6 +836,14 @@
         _boardLayout = null;
         _boardGrabbed = false;
         _analogMode = false;
+        if (e.data.context === 'hunt') {
+          _cursorEl.style.display = 'none';
+          _hudEl.style.display = 'none';
+          if (!_openHuntBrowser()) {
+            window.postMessage({ type: 'PAC_GAMEPAD_HUNT_CLOSE' }, '*');
+          }
+          break;
+        }
         if (e.data.context === 'disabled') {
           _cursorEl.style.display = 'none';
           _updateHUD('disabled');
@@ -462,6 +854,18 @@
           // Reset cursor to default teal on context switch
           _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
           _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
+        }
+        break;
+
+      case 'PAC_GAMEPAD_HUNT_BUTTON':
+        if (_huntOpen) _handleHuntButton(e.data.button);
+        break;
+
+      case 'PAC_GAMEPAD_HUNT_FORCE_CLOSE':
+        if (_huntOpen) {
+          _huntOpen = false;
+          _destroyHuntOverlay();
+          // Don't send HUNT_CLOSE — core already changed context
         }
         break;
     }
@@ -565,6 +969,7 @@
         '<div><span style="color:rgba(48,213,200,0.7);">X</span> Lock/unlock shop</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">Menu</span> End turn</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Switch to board</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
       '</div>';
 
     var refContent = document.createElement('div');
@@ -581,6 +986,7 @@
       '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
         '<div><span style="color:rgba(48,213,200,0.7);">D-pad L/R</span> Cycle choices</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">A</span> Pick selection</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
         '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Auto-activates during proposition screens</div>' +
       '</div>';
 
@@ -602,6 +1008,7 @@
         '<div><span style="color:rgba(48,213,200,0.7);">Y</span> Sell unit at cursor (or grabbed)</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel grab / Back to shop</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Return to shop</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
         '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Cursor turns green when holding a unit</div>' +
       '</div>';
 
