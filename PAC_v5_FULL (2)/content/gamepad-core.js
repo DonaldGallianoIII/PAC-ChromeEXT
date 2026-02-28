@@ -627,6 +627,21 @@
     var target = document.elementFromPoint(x, y);
     if (!target) target = document.body;
 
+    // For clicks on non-canvas elements (PAC UI, website buttons), use native
+    // .click() which produces isTrusted:true events — ensures content-script
+    // event listeners respond. Canvas needs synthetic events with coordinates.
+    if (eventType === 'click') {
+      if (target.tagName !== 'CANVAS' && target.click) {
+        target.click();
+      } else {
+        target.dispatchEvent(new MouseEvent('click', {
+          clientX: x, clientY: y, screenX: x, screenY: y,
+          bubbles: true, cancelable: true, view: window, button: 0, buttons: 0
+        }));
+      }
+      return;
+    }
+
     var eventInit = {
       clientX: x,
       clientY: y,
@@ -636,7 +651,7 @@
       cancelable: true,
       view: window,
       button: 0,
-      buttons: (eventType === 'mouseup' || eventType === 'click') ? 0 : 1
+      buttons: (eventType === 'mouseup') ? 0 : 1
     };
 
     // Dispatch both pointer and mouse events for maximum compatibility.
