@@ -677,9 +677,10 @@
       // Detect shop slot and use __AgentIO directly.
       var shopContainer = document.querySelector('ul.game-pokemons-store');
       if (yEl && shopContainer && shopContainer.contains(yEl)) {
-        var slots = shopContainer.querySelectorAll('div.my-box.clickable.game-pokemon-portrait');
-        for (var si = 0; si < slots.length; si++) {
-          if (slots[si].contains(yEl) || slots[si] === yEl) {
+        // Use children (all slots including empties) so indices stay stable after removals
+        var allSlots = shopContainer.children;
+        for (var si = 0; si < allSlots.length; si++) {
+          if (allSlots[si].contains(yEl) || allSlots[si] === yEl) {
             _guardedExec(74 + si);
             break;
           }
