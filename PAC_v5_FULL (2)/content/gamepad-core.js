@@ -479,57 +479,15 @@
   // ════════════════════════════════════════
 
   /**
-   * Get human-readable block reason for an action index.
-   */
-  function _getBlockReason(index) {
-    if (!window.__AgentIO) return 'no_room';
-
-    var phase = window.__AgentIO.phase();
-    if (phase === 'combat' || phase === 'game_over' ||
-        phase === 'carousel' || phase === 'portal_select') {
-      return 'wrong_phase';
-    }
-    if (index >= 0 && index <= 5) {
-      return 'cant_afford';
-    }
-    return 'invalid';
-  }
-
-  /**
-   * Check mask then execute a game action.
+   * Execute a game action. Fire-and-forget — server validates legality.
    */
   function _guardedExec(actionIndex) {
     if (!window.__AgentIO) {
-      window.postMessage({
-        type: 'PAC_GAMEPAD_BLOCKED',
-        index: actionIndex,
-        reason: 'no_room'
-      }, '*');
       _vibrate(HAPTICS.blocked);
       return;
     }
-
-    var mask = window.__AgentIO.mask();
-    if (!mask) {
-      window.postMessage({
-        type: 'PAC_GAMEPAD_BLOCKED',
-        index: actionIndex,
-        reason: 'no_room'
-      }, '*');
-      _vibrate(HAPTICS.blocked);
-      return;
-    }
-
-    if (mask[actionIndex] !== 1) {
-      window.postMessage({
-        type: 'PAC_GAMEPAD_BLOCKED',
-        index: actionIndex,
-        reason: _getBlockReason(actionIndex)
-      }, '*');
-      _vibrate(HAPTICS.blocked);
-      return;
-    }
-
+    // Fire immediately — server validates legality. No client-side mask
+    // check so rapid presses aren't blocked by stale mask data.
     window.__AgentIO.exec(actionIndex);
     window.postMessage({
       type: 'PAC_GAMEPAD_EXECUTED',
@@ -576,14 +534,9 @@
     var phase = window.__AgentIO.phase();
     var newContext;
 
-    if (phase === 'shop') {
-      // Preserve hunt/target context if user opened a browser overlay
-      newContext = (_context === 'hunt' || _context === 'target') ? _context : 'shop';
-    } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
-      newContext = 'disabled'; // Use analog stick for picks
-    } else {
-      newContext = 'disabled';
-    }
+    // Always 'shop' — the shop is visible in every phase (picks, carousel, portal).
+    // Preserve hunt/target if an overlay is open.
+    newContext = (_context === 'hunt' || _context === 'target') ? _context : 'shop';
 
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
@@ -730,8 +683,6 @@
       return;
     }
 
-    if (_context === 'disabled') return;
-
     // D-pad press → exit analog mode, return to grid
     if (button >= 12 && button <= 15) {
       if (_analogActive) {
@@ -744,9 +695,9 @@
       }
     }
 
-    // Hunt browser — rebindable (works from any non-disabled, non-hunt, non-target context)
+    // Hunt browser — rebindable (works from any non-hunt, non-target context)
     if (_reverseBinds[button] === 'huntBrowser'
-        && _context !== 'disabled' && _context !== 'hunt' && _context !== 'target') {
+        && _context !== 'hunt' && _context !== 'target') {
       if (_analogActive) {
         if (_analogDragging) {
           _dispatchMouse('mouseup', _analogX, _analogY);
@@ -764,9 +715,9 @@
       return;
     }
 
-    // Target browser — rebindable (works from any non-disabled, non-hunt, non-target context)
+    // Target browser — rebindable (works from any non-hunt, non-target context)
     if (_reverseBinds[button] === 'targetBrowser'
-        && _context !== 'disabled' && _context !== 'target' && _context !== 'hunt') {
+        && _context !== 'target' && _context !== 'hunt') {
       if (_analogActive) {
         if (_analogDragging) {
           _dispatchMouse('mouseup', _analogX, _analogY);
