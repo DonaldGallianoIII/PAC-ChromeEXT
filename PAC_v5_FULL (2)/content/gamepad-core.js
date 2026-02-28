@@ -778,14 +778,10 @@
     // Cancel hold-to-repeat for any button (safe — no-op if no timer exists)
     _cancelHoldTimer(button);
 
-    // A release in analog mode → mouseup + optional click
+    // A release in analog mode → mouseup + click at current position
     if (button === 0 && _analogActive && _analogDragging) {
       _dispatchMouse('mouseup', _analogX, _analogY);
-      var dx = _analogX - _analogDragStartX;
-      var dy = _analogY - _analogDragStartY;
-      if (Math.sqrt(dx * dx + dy * dy) < 5) {
-        _dispatchMouse('click', _analogX, _analogY);
-      }
+      _dispatchMouse('click', _analogX, _analogY);
       _analogDragging = false;
       window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DRAG', dragging: false }, '*');
     }
