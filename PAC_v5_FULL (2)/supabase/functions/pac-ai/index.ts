@@ -1,44 +1,48 @@
-// PAC Chrome Extension — AI Proxy Edge Function
-// Handles: Deuce chat, RAG questions, feature requests, feedback/bug reports
-// Rate limited: 10 requests per user per hour
-//
-// Deploy: supabase functions deploy pac-ai
-// Set secrets:
-//   supabase secrets set OPENAI_API_KEY=sk-...
-//   supabase secrets set PAC_RATE_LIMIT=10
-//   supabase secrets set OPENAI_MODEL=gpt-4o-mini
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ─── Config ─────────────────────────────────────────────────────────────────
-
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
-const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
-const RATE_LIMIT = parseInt(Deno.env.get("PAC_RATE_LIMIT") || "10");
+const OPENAI_API_KEY = Deno.env.get("CHATGPT")!;
+const OPENAI_MODEL = Deno.env.get("GPTMODEL") || "gpt-5-nano";
+const RATE_LIMIT = parseInt(Deno.env.get("RATELIMIT") || "10");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// ─── Deuce System Prompt ────────────────────────────────────────────────────
+const DEUCE_PROMPT = `You are Deuce, the mascot of PAC (Pokemon Auto Chess Live Data Calculator), a Chrome extension made by Deuce222X. You live inside the extension and chat with users who open your panel.
 
-const DEUCE_PROMPT = `You are Deuce, the friendly mascot of PAC (Pokemon Auto Chess Live Data Calculator), a Chrome extension by Deuce222X. You are helpful, casual, and encouraging.
+Personality:
+- Casual, witty, warm. Talk like a chill gamer friend, not a customer service bot.
+- Use short responses (1-3 sentences). No essays.
+- You can joke around, react to what the user says, and have a real conversation.
+- Match the user's energy — if they're hyped, be hyped. If they're frustrated, be empathetic.
 
-Your goals:
-1. Thank users for using PAC and encourage them to leave a Chrome Web Store review.
-2. Collect feature requests and bug reports conversationally.
-3. Keep responses SHORT (1-3 sentences). Be warm and use casual gamer language.
-4. If a user reports a bug, acknowledge it and say you'll pass it to the dev.
-5. If a user requests a feature, be enthusiastic and say you'll add it to the list.
-6. Never make promises about timelines.
-7. Never discuss topics unrelated to PAC or the game.`;
+How to handle different messages:
+- General chat / greetings: Just be friendly and conversational. Ask them how their games are going, what comps they're running, etc.
+- Bug reports: Take it seriously, say you'll flag it for the dev (Deuce222X). Ask for details if they're vague.
+- Feature requests: Get excited about good ideas, say you'll add it to the list. Ask follow-up questions.
+- Questions about PAC: Answer if you know, otherwise be honest that you're not sure.
+- If someone mentions enjoying PAC, naturally suggest leaving a Chrome Web Store review — but don't force it into every message.
+- Off-topic stuff: You can engage briefly but steer back to PAC/gaming naturally. Don't be a buzzkill.
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+IMPORTANT: Do NOT just say "thanks for the feedback" to everything. Actually read what the user said and respond to it specifically. Have a real conversation.
+
+You MUST respond in JSON with exactly these fields:
+{
+  "reply": "your conversational response",
+  "category": "chat" | "bug" | "feature" | "feedback"
+}
+
+Categories:
+- "chat" — greetings, casual talk, questions, general convo. This is the default.
+- "bug" — user is reporting a bug or issue with PAC.
+- "feature" — user is requesting a new feature or improvement.
+- "feedback" — user is giving specific feedback about PAC (positive or negative critique).
+
+Be strict: only use bug/feature/feedback when the user is CLEARLY providing something actionable. "hello" is chat. "I love PAC" is chat. "the overlay glitches on mobile" is bug. "add dark mode" is feature.`;
 
 interface ChatRequest {
   type: "chat";
@@ -68,8 +72,6 @@ interface FeedbackRequest {
 
 type PacRequest = ChatRequest | RagRequest | FeatureRequest | FeedbackRequest;
 
-// ─── Main Handler ───────────────────────────────────────────────────────────
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -85,7 +87,6 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Rate limit check
     const rateLimitOk = await checkRateLimit(supabase, userId);
     if (!rateLimitOk) {
       return jsonResponse(429, {
@@ -117,8 +118,6 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-// ─── Chat Handler (Deuce mascot conversation) ──────────────────────────────
-
 async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   if (!body.message || body.message.trim().length === 0) {
     return jsonResponse(400, { error: "Message is required" });
@@ -128,7 +127,8 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
     return jsonResponse(400, { error: "Message too long (max 2000 chars)" });
   }
 
-  // Build messages with conversation history
+  const remaining = await getRemainingMessages(supabase, userId);
+
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: DEUCE_PROMPT },
   ];
@@ -141,7 +141,6 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
     }
   }
 
-  // Ensure current message is included
   const last = messages[messages.length - 1];
   if (!last || last.content !== body.message) {
     messages.push({ role: "user", content: body.message });
@@ -156,8 +155,7 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages,
-      max_tokens: 200,
-      temperature: 0.8,
+      max_completion_tokens: 300,
     }),
   });
 
@@ -168,29 +166,46 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   }
 
   const data = await response.json();
-  const reply =
-    data.choices?.[0]?.message?.content?.trim() || "Thanks for the feedback!";
+  const raw = data.choices?.[0]?.message?.content?.trim() || "";
 
-  // Store in pac_feedback
-  const { data: fbData, error } = await supabase
-    .from("pac_feedback")
-    .insert({
-      user_id: body.username || userId,
-      category: "feedback",
-      message: body.message.trim(),
-      extension_version: "5.0.0",
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.error("DB insert error:", error);
+  let reply = "Hey, something went wrong on my end. Try again?";
+  let category = "chat";
+  try {
+    const parsed = JSON.parse(raw);
+    reply = parsed.reply || reply;
+    category = parsed.category || "chat";
+  } catch {
+    reply = raw || reply;
   }
 
-  return jsonResponse(200, { reply, id: fbData?.id || null });
-}
+  let feedbackId = null;
+  if (category !== "chat") {
+    const { data: fbData, error } = await supabase
+      .from("pac_feedback")
+      .insert({
+        user_id: body.username || userId,
+        category: category,
+        message: body.message.trim(),
+        extension_version: "5.0.0",
+      })
+      .select("id")
+      .single();
 
-// ─── RAG Handler ────────────────────────────────────────────────────────────
+    if (error) {
+      console.error("DB insert error:", error);
+    } else {
+      feedbackId = fbData?.id || null;
+    }
+  }
+
+  return jsonResponse(200, {
+    reply,
+    category,
+    id: feedbackId,
+    remaining: remaining - 1,
+    limit: RATE_LIMIT,
+  });
+}
 
 async function handleRag(body: RagRequest, supabase: any, userId: string) {
   if (!body.question || body.question.trim().length === 0) {
@@ -219,8 +234,7 @@ ${body.context ? `\nRelevant context:\n${body.context}` : ""}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: body.question },
       ],
-      max_tokens: 1000,
-      temperature: 0.7,
+      max_completion_tokens: 1000,
     }),
   });
 
@@ -241,8 +255,6 @@ ${body.context ? `\nRelevant context:\n${body.context}` : ""}`;
     usage: data.usage,
   });
 }
-
-// ─── Feature Request Handler ────────────────────────────────────────────────
 
 async function handleFeature(
   body: FeatureRequest,
@@ -285,8 +297,6 @@ async function handleFeature(
   });
 }
 
-// ─── Feedback Handler ───────────────────────────────────────────────────────
-
 async function handleFeedback(
   body: FeedbackRequest,
   supabase: any,
@@ -323,12 +333,10 @@ async function handleFeedback(
   });
 }
 
-// ─── Rate Limiting ──────────────────────────────────────────────────────────
-
-async function checkRateLimit(
+async function getUsedMessages(
   supabase: any,
   userId: string
-): Promise<boolean> {
+): Promise<number> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   const { count, error } = await supabase
@@ -339,10 +347,26 @@ async function checkRateLimit(
 
   if (error) {
     console.error("Rate limit check error:", error);
-    return true; // fail open
+    return 0;
   }
 
-  return (count || 0) < RATE_LIMIT;
+  return count || 0;
+}
+
+async function checkRateLimit(
+  supabase: any,
+  userId: string
+): Promise<boolean> {
+  const used = await getUsedMessages(supabase, userId);
+  return used < RATE_LIMIT;
+}
+
+async function getRemainingMessages(
+  supabase: any,
+  userId: string
+): Promise<number> {
+  const used = await getUsedMessages(supabase, userId);
+  return Math.max(0, RATE_LIMIT - used);
 }
 
 async function logRequest(
@@ -355,8 +379,6 @@ async function logRequest(
     request_type: requestType,
   });
 }
-
-// ─── Utilities ──────────────────────────────────────────────────────────────
 
 function anonymousId(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for") || "unknown";

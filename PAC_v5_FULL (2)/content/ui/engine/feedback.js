@@ -22,6 +22,7 @@
   var fbClient = null;
   var ready = false;
   var sending = false;
+  var remaining = -1; // -1 = unknown until first response
 
   PAC.UI.Engine.Feedback = {
     init: init,
@@ -29,7 +30,8 @@
     getHistory: getHistory,
     clearHistory: clearHistory,
     isReady: function() { return ready; },
-    isSending: function() { return sending; }
+    isSending: function() { return sending; },
+    getRemaining: function() { return remaining; }
   };
 
   function init() {
@@ -83,8 +85,13 @@
     .then(function(data) {
       sending = false;
       if (data.error) {
-        Events.emit('feedback:error', { error: data.error });
+        Events.emit('feedback:error', { error: data.error, remaining: data.remaining });
         return null;
+      }
+      // Track remaining messages
+      if (typeof data.remaining === 'number') {
+        remaining = data.remaining;
+        Events.emit('feedback:remaining', { remaining: remaining, limit: data.limit });
       }
       var assistantMsg = {
         role: 'assistant',
@@ -95,7 +102,7 @@
       h.push(assistantMsg);
       _saveHistory(h);
       Events.emit('feedback:assistantMessage', assistantMsg);
-      return { reply: data.reply, id: data.id };
+      return { reply: data.reply, id: data.id, category: data.category, remaining: remaining };
     })
     .catch(function(err) {
       sending = false;

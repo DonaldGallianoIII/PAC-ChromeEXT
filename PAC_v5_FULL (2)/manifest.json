@@ -95,8 +95,7 @@
         "content/api-core.js",
         "content/keybind-core.js",
         "content/gamepad-core.js",
-        "content/assets/deuce-sprite.png",
-        "content/assets/deuce/walk-south.png"
+        "content/assets/deuce/south.png"
       ],
       "matches": ["*://*.pokemon-auto-chess.com/*", "*://pokemon-auto-chess.com/*"]
     }

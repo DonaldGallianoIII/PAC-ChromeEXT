@@ -14,15 +14,12 @@
   var Feedback = null;
 
   var els = {};
-  var hasAnimated = false;
 
   var REVIEW_URL = 'https://chromewebstore.google.com/detail/pokemon-auto-chess-live-d/mahkfbchpheiclhjcplflhiobogfklgl';
 
   var GREETING = "Hey! I'm Deuce \u2014 thanks for rocking PAC! " +
     "If you're enjoying it, a quick review on the Chrome Web Store would mean the world to me. " +
     "Got feedback or feature ideas? Drop them here and I'll pass them along to the dev!";
-
-  var WALK_DURATION = 3000; // ms — how long sprite walks in
 
   PAC.UI.Sections.feedback = {
     render: function(body) {
@@ -42,23 +39,21 @@
           '<input type="text" id="pac-fb-input" class="pac-fb-input" ' +
             'placeholder="Share feedback or ideas..." maxlength="1000" autocomplete="off">' +
           '<button id="pac-fb-send" class="pac-fb-send-btn">\u2191</button>' +
-        '</div>';
+        '</div>' +
+        '<div id="pac-fb-remaining" class="pac-fb-remaining"></div>';
 
-      els.sprite   = body.querySelector('#pac-fb-sprite');
-      els.messages = body.querySelector('#pac-fb-messages');
-      els.input    = body.querySelector('#pac-fb-input');
-      els.sendBtn  = body.querySelector('#pac-fb-send');
+      els.sprite    = body.querySelector('#pac-fb-sprite');
+      els.messages  = body.querySelector('#pac-fb-messages');
+      els.input     = body.querySelector('#pac-fb-input');
+      els.sendBtn   = body.querySelector('#pac-fb-send');
+      els.remaining = body.querySelector('#pac-fb-remaining');
 
       _injectStyles();
       _wireUI();
       _loadHistory();
 
-      if (!hasAnimated) {
-        _animateWalkIn();
-        hasAnimated = true;
-      } else {
-        els.sprite.classList.add('pac-fb-sprite--idle');
-      }
+      // Static south-facing sprite — just show it
+      els.sprite.classList.add('pac-fb-sprite--visible');
     }
   };
 
@@ -95,10 +90,40 @@
 
       if (result && result.reply) {
         _appendBubble('assistant', result.reply);
+        _updateRemaining(result.remaining);
       } else {
-        _appendBubble('assistant', "Hmm, I couldn't process that. Try again?");
+        // Check if rate limited
+        var rem = Feedback.getRemaining();
+        if (rem === 0) {
+          _appendSystem('You\'ve hit the message limit (resets in ~1 hour).');
+          _disableInput();
+        } else {
+          _appendBubble('assistant', "Hmm, I couldn't process that. Try again?");
+        }
       }
     });
+  }
+
+  function _updateRemaining(count) {
+    if (!els.remaining || typeof count !== 'number') return;
+    if (count <= 3 && count > 0) {
+      els.remaining.textContent = count + ' message' + (count === 1 ? '' : 's') + ' remaining this hour';
+      els.remaining.style.display = 'block';
+    } else if (count <= 0) {
+      els.remaining.textContent = 'Message limit reached \u2014 resets in ~1 hour';
+      els.remaining.style.display = 'block';
+      _disableInput();
+    } else {
+      els.remaining.style.display = 'none';
+    }
+  }
+
+  function _disableInput() {
+    if (els.input) {
+      els.input.disabled = true;
+      els.input.placeholder = 'Message limit reached...';
+    }
+    if (els.sendBtn) els.sendBtn.disabled = true;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -224,29 +249,15 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SPRITE ANIMATION
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  function _animateWalkIn() {
-    els.sprite.classList.add('pac-fb-sprite--walking');
-    setTimeout(function() {
-      els.sprite.classList.remove('pac-fb-sprite--walking');
-      els.sprite.classList.add('pac-fb-sprite--idle');
-    }, WALK_DURATION);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // STYLES (fully self-contained — iMessage bubbles + sprite + input)
   // ═══════════════════════════════════════════════════════════════════════════
 
   function _injectStyles() {
     if (document.getElementById('pac-fb-styles')) return;
 
-    var walkEastUrl = '';
-    var walkSouthUrl = '';
+    var southUrl = '';
     try {
-      walkEastUrl  = chrome.runtime.getURL('content/assets/deuce-sprite.png');
-      walkSouthUrl = chrome.runtime.getURL('content/assets/deuce/walk-south.png');
+      southUrl = chrome.runtime.getURL('content/assets/deuce/south.png');
     } catch(e) {}
 
     var css =
@@ -258,44 +269,21 @@
 
       // ── Sprite stage ────────────────────────────────────────────────
       '.pac-fb-sprite-stage {' +
-        'flex-shrink: 0; height: 100px; position: relative;' +
+        'flex-shrink: 0; height: 140px; position: relative;' +
         'overflow: hidden; border-bottom: 1px solid rgba(255,255,255,0.06);' +
         'background: rgba(0,0,0,0.15);' +
+        'display: flex; align-items: center; justify-content: center;' +
       '}' +
 
-      // ── Sprite element — walks east, then idles facing south ──────
+      // ── Static south-facing sprite — 124px native, 120px display ──
       '.pac-fb-sprite {' +
-        'width: 80px; height: 80px; position: absolute;' +
-        'bottom: 10px; left: -80px;' +
-        'background: url("' + walkEastUrl + '") left center;' +
-        'background-size: auto 80px;' +
+        'width: 120px; height: 120px;' +
+        'background: url("' + southUrl + '") center / contain no-repeat;' +
         'image-rendering: pixelated;' +
+        'opacity: 0; transition: opacity 0.4s ease;' +
       '}' +
-
-      // Walk-in: slide left→center, 8-frame east walk cycle
-      '@keyframes pac-fb-walk-in {' +
-        'from { left: -80px; }' +
-        'to   { left: calc(50% - 40px); }' +
-      '}' +
-      '@keyframes pac-fb-sprite-walk {' +
-        'from { background-position: 0 center; }' +
-        'to   { background-position: -640px center; }' +
-      '}' +
-      '.pac-fb-sprite--walking {' +
-        'animation: pac-fb-walk-in 3s ease-out forwards,' +
-                  ' pac-fb-sprite-walk 0.8s steps(8) infinite;' +
-      '}' +
-
-      // Idle: face south, 2-frame loop
-      '@keyframes pac-fb-sprite-idle {' +
-        'from { background-position: 0 center; }' +
-        'to   { background-position: -248px center; }' +
-      '}' +
-      '.pac-fb-sprite--idle {' +
-        'left: calc(50% - 40px);' +
-        'background-image: url("' + walkSouthUrl + '");' +
-        'background-size: auto 80px;' +
-        'animation: pac-fb-sprite-idle 1s steps(2) infinite;' +
+      '.pac-fb-sprite--visible {' +
+        'opacity: 1;' +
       '}' +
 
       // ── Messages container — scrollable ─────────────────────────────
@@ -404,6 +392,21 @@
       '}' +
       '.pac-fb-send-btn:hover { opacity: 0.85; }' +
       '.pac-fb-send-btn:active { transform: scale(0.93); }' +
+
+      // ── Remaining counter ────────────────────────────────────────────
+      '.pac-fb-remaining {' +
+        'display: none; text-align: center; padding: 4px 12px;' +
+        'font-size: 11px; color: var(--pac-text-muted, rgba(255,255,255,0.4));' +
+        'background: rgba(0,0,0,0.1); flex-shrink: 0;' +
+      '}' +
+
+      // ── Disabled state ──────────────────────────────────────────────
+      '.pac-fb-input:disabled {' +
+        'opacity: 0.4; cursor: not-allowed;' +
+      '}' +
+      '.pac-fb-send-btn:disabled {' +
+        'opacity: 0.3; cursor: not-allowed;' +
+      '}' +
 
       // ── Typing dots ─────────────────────────────────────────────────
       '@keyframes pac-fb-dot-pulse {' +
