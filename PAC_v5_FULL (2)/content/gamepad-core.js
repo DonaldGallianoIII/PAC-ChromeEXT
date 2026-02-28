@@ -80,6 +80,59 @@
 
 
   // ════════════════════════════════════════
+  // BUTTON BINDINGS (rebindable)
+  // ════════════════════════════════════════
+
+  var DEFAULT_BINDS = {
+    cursorLeft:  14,   // D-pad Left
+    cursorRight: 15,   // D-pad Right
+    buy:         0,    // A
+    remove:      3,    // Y
+    reroll:      6,    // LT
+    levelUp:     7,    // RT
+    lockShop:    2,    // X
+    endTurn:     9,    // Start/Menu
+    huntBrowser: 5     // RB
+  };
+
+  var _binds = {};          // action → button index
+  var _reverseBinds = {};   // button index → action
+  var _captureMode = false; // true when UI is capturing a button press for binding
+
+  function _rebuildReverse() {
+    _reverseBinds = {};
+    var keys = Object.keys(_binds);
+    for (var i = 0; i < keys.length; i++) {
+      var btn = _binds[keys[i]];
+      if (btn !== null && btn !== undefined) {
+        _reverseBinds[btn] = keys[i];
+      }
+    }
+  }
+
+  function _initBinds() {
+    var keys = Object.keys(DEFAULT_BINDS);
+    for (var i = 0; i < keys.length; i++) {
+      _binds[keys[i]] = DEFAULT_BINDS[keys[i]];
+    }
+    _rebuildReverse();
+  }
+
+  function _applyBinds(incoming) {
+    var keys = Object.keys(DEFAULT_BINDS);
+    for (var i = 0; i < keys.length; i++) {
+      var action = keys[i];
+      _binds[action] = (incoming && incoming[action] !== undefined && incoming[action] !== null)
+        ? incoming[action]
+        : DEFAULT_BINDS[action];
+    }
+    _rebuildReverse();
+  }
+
+  _initBinds();
+
+
+  // ════════════════════════════════════════
   // HAPTIC FEEDBACK
   // ════════════════════════════════════════
 
@@ -147,7 +200,9 @@
           return;
         }
         if (startContext === 'shop') {
-          _moveCursor((button === 14) ? -1 : 1);
+          var holdAction = _reverseBinds[button];
+          if (holdAction === 'cursorLeft') _moveCursor(-1);
+          else if (holdAction === 'cursorRight') _moveCursor(1);
         } else if (startContext === 'hunt') {
           window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
         }
@@ -671,6 +726,12 @@
    * Handle a button press event (transition from unpressed to pressed).
    */
   function _onPress(button) {
+    // ── Capture mode: intercept for binding UI, don't execute ──
+    if (_captureMode) {
+      window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURED', button: button }, '*');
+      return;
+    }
+
     // Analog mode A/B — works in ALL contexts (enables lobby/menu navigation)
     if (button === 0 && _analogActive) {
       _analogDown();
@@ -705,8 +766,8 @@
       }
     }
 
-    // RB → open hunt browser (works from any non-disabled, non-hunt context)
-    if (button === 5 && _context !== 'disabled' && _context !== 'hunt') {
+    // Hunt browser — rebindable (works from any non-disabled, non-hunt context)
+    if (_reverseBinds[button] === 'huntBrowser' && _context !== 'disabled' && _context !== 'hunt') {
       if (_analogActive) {
         if (_analogDragging) {
           _dispatchMouse('mouseup', _analogX, _analogY);
@@ -742,10 +803,8 @@
    * Handle a button release event.
    */
   function _onRelease(button) {
-    // Cancel hold-to-repeat for D-pad buttons
-    if (button === 12 || button === 13 || button === 14 || button === 15) {
-      _cancelHoldTimer(button);
-    }
+    // Cancel hold-to-repeat for any button (safe — no-op if no timer exists)
+    _cancelHoldTimer(button);
 
     // A release in analog mode → mouseup + optional click
     if (button === 0 && _analogActive && _analogDragging) {
@@ -767,19 +826,20 @@
    * Shop context button mapping.
    */
   function _shopPress(button) {
-    switch (button) {
-      case 14: _moveCursor(-1); break;               // D-pad Left
-      case 15: _moveCursor(1); break;                 // D-pad Right
-      case 0:  _guardedExec(_shopCursor); break;      // A = buy at cursor
-      case 3:  _guardedExec(74 + _shopCursor); break; // Y = remove at cursor
-      case 2:  _guardedExec(8); break;                 // X = lock shop
-      case 6:  _guardedExec(6); break;                 // LT = reroll
-      case 7:  _guardedExec(7); break;                 // RT = level up
-      case 9:  _guardedExec(9); break;                 // Menu = end turn
-    }
+    var action = _reverseBinds[button];
+    if (!action) return;
 
-    // Hold-to-repeat for D-pad only
-    if (button === 14 || button === 15) {
+    if (action === 'cursorLeft') _moveCursor(-1);
+    else if (action === 'cursorRight') _moveCursor(1);
+    else if (action === 'buy') _guardedExec(_shopCursor);
+    else if (action === 'remove') _guardedExec(74 + _shopCursor);
+    else if (action === 'lockShop') _guardedExec(8);
+    else if (action === 'reroll') _guardedExec(6);
+    else if (action === 'levelUp') _guardedExec(7);
+    else if (action === 'endTurn') _guardedExec(9);
+
+    // Hold-to-repeat for cursor actions
+    if (action === 'cursorLeft' || action === 'cursorRight') {
       _startHoldRepeat(button);
     }
   }
@@ -1030,6 +1090,16 @@
     if (e.data.type === 'PAC_GAMEPAD_STICK_CURVE') {
       var val = parseFloat(e.data.curve);
       _stickExponent = (val > 0 && val <= 5) ? val : 1.0;
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_BIND_CAPTURE_MODE') {
+      _captureMode = !!e.data.active;
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_BIND_UPDATE') {
+      _applyBinds(e.data.binds);
       return;
     }
   });

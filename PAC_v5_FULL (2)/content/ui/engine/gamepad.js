@@ -54,6 +54,29 @@
   var _styleInjected = false;
   var _breatheTimer = null;
 
+  // ── Button Bindings ──
+  var _bindCaptureMode = false;
+  var _bindCaptureCallback = null;
+
+  var GAMEPAD_ACTIONS = [
+    { key: 'cursorLeft',  label: 'Cursor Left',  defaultBtn: 14 },
+    { key: 'cursorRight', label: 'Cursor Right', defaultBtn: 15 },
+    { key: 'buy',         label: 'Buy',          defaultBtn: 0 },
+    { key: 'remove',      label: 'Remove',       defaultBtn: 3 },
+    { key: 'reroll',      label: 'Reroll',       defaultBtn: 6 },
+    { key: 'levelUp',     label: 'Level Up',     defaultBtn: 7 },
+    { key: 'lockShop',    label: 'Lock Shop',    defaultBtn: 2 },
+    { key: 'endTurn',     label: 'End Turn',     defaultBtn: 9 },
+    { key: 'huntBrowser', label: 'Hunt Browser', defaultBtn: 5 }
+  ];
+
+  var BUTTON_NAMES = {
+    0: 'A', 1: 'B', 2: 'X', 3: 'Y',
+    4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT',
+    8: 'Back', 9: 'Start', 10: 'L3', 11: 'R3',
+    12: 'D-Up', 13: 'D-Down', 14: 'D-Left', 15: 'D-Right'
+  };
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CONFIG PERSISTENCE
@@ -70,6 +93,74 @@
 
   function _saveConfig(config) {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUTTON BIND PERSISTENCE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _getDefaultBinds() {
+    var defaults = {};
+    for (var i = 0; i < GAMEPAD_ACTIONS.length; i++) {
+      defaults[GAMEPAD_ACTIONS[i].key] = GAMEPAD_ACTIONS[i].defaultBtn;
+    }
+    return defaults;
+  }
+
+  function _getEffectiveBinds() {
+    var config = _loadConfig();
+    var saved = config.binds || null;
+    var defaults = _getDefaultBinds();
+    if (!saved) return defaults;
+    var result = {};
+    for (var i = 0; i < GAMEPAD_ACTIONS.length; i++) {
+      var key = GAMEPAD_ACTIONS[i].key;
+      result[key] = (saved[key] !== undefined && saved[key] !== null)
+        ? saved[key]
+        : defaults[key];
+    }
+    return result;
+  }
+
+  function _saveBinds(binds) {
+    var config = _loadConfig();
+    config.binds = binds;
+    _saveConfig(config);
+    window.postMessage({ type: 'PAC_GAMEPAD_BIND_UPDATE', binds: binds }, '*');
+  }
+
+  function _bindButton(actionKey, button) {
+    var binds = _getEffectiveBinds();
+    // One-to-one: clear any action already using this button
+    var keys = Object.keys(binds);
+    for (var i = 0; i < keys.length; i++) {
+      if (binds[keys[i]] === button) {
+        binds[keys[i]] = null;
+      }
+    }
+    binds[actionKey] = button;
+    _saveBinds(binds);
+    return binds;
+  }
+
+  function _unbindButton(actionKey) {
+    var binds = _getEffectiveBinds();
+    binds[actionKey] = null;
+    _saveBinds(binds);
+    return binds;
+  }
+
+  function _startBindCapture(callback) {
+    _bindCaptureCallback = callback;
+    _bindCaptureMode = true;
+    window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURE_MODE', active: true }, '*');
+  }
+
+  function _cancelBindCapture() {
+    _bindCaptureCallback = null;
+    _bindCaptureMode = false;
+    window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURE_MODE', active: false }, '*');
   }
 
 
@@ -175,7 +266,18 @@
    */
   function _updateHUD(context) {
     if (context === 'shop') {
-      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End';
+      var binds = _getEffectiveBinds();
+      var _bn = function(actionKey) {
+        var btn = binds[actionKey];
+        return (btn !== null && btn !== undefined) ? (BUTTON_NAMES[btn] || '?') : '?';
+      };
+      _hudEl.textContent =
+        _bn('buy') + ' Buy  \u00B7  ' +
+        _bn('remove') + ' Remove  \u00B7  ' +
+        _bn('reroll') + ' Reroll  \u00B7  ' +
+        _bn('levelUp') + ' Level  \u00B7  ' +
+        _bn('lockShop') + ' Lock  \u00B7  ' +
+        _bn('endTurn') + ' End';
       _hudEl.style.display = 'block';
     } else if (context === 'analog') {
       _hudEl.textContent = 'A Click/Drag  \u00B7  B Cancel  \u00B7  D-pad Shop Mode';
@@ -918,6 +1020,9 @@
         if (config.stickCurve) {
           window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: config.stickCurve }, '*');
         }
+        // Push saved button binds to core
+        var savedBinds = _getEffectiveBinds();
+        window.postMessage({ type: 'PAC_GAMEPAD_BIND_UPDATE', binds: savedBinds }, '*');
         if (PAC.DEBUG_MODE) console.log('PAC Gamepad: Core ready');
         break;
 
@@ -1032,6 +1137,15 @@
           _showTooltip(e.data);
         } else {
           _hideTooltip();
+        }
+        break;
+
+      case 'PAC_GAMEPAD_BIND_CAPTURED':
+        if (_bindCaptureCallback) {
+          _bindCaptureCallback(e.data.button);
+          _bindCaptureCallback = null;
+          _bindCaptureMode = false;
+          window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURE_MODE', active: false }, '*');
         }
         break;
     }
@@ -1158,28 +1272,108 @@
     toggleGroup.appendChild(hapRow);
     container.appendChild(toggleGroup);
 
-    // ── Button Reference ──
-    var refGroup = document.createElement('div');
-    refGroup.className = 'pac-group';
-    refGroup.appendChild(_buildGroupHeader('SHOP CONTROLS', 'rgba(255,255,255,0.3)'));
+    // ── Button Bindings ──
+    var bindGroup = document.createElement('div');
+    bindGroup.className = 'pac-group';
+    bindGroup.appendChild(_buildGroupHeader('BUTTON BINDINGS'));
 
-    var refHTML =
-      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
-        '<div><span style="color:rgba(48,213,200,0.7);">D-pad L/R</span> Navigate shop slots</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Buy at cursor</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">Y</span> Remove at cursor</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">LT</span> Reroll shop</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">RT</span> Level up</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">X</span> Lock/unlock shop</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">Menu</span> End turn</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
-        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Use analog stick for picks, board, and menus</div>' +
-      '</div>';
+    var currentBinds = _getEffectiveBinds();
+    var _activeBindSlot = null;
 
-    var refContent = document.createElement('div');
-    refContent.innerHTML = refHTML;
-    refGroup.appendChild(refContent);
-    container.appendChild(refGroup);
+    for (var bi = 0; bi < GAMEPAD_ACTIONS.length; bi++) {
+      (function(action) {
+        var boundBtn = currentBinds[action.key];
+        var displayText = (boundBtn !== null && boundBtn !== undefined)
+          ? (BUTTON_NAMES[boundBtn] || 'Btn ' + boundBtn)
+          : '';
+        var isEmpty = (boundBtn === null || boundBtn === undefined);
+
+        var row = document.createElement('div');
+        row.style.cssText =
+          'display:flex;align-items:center;justify-content:space-between;' +
+          'padding:5px 8px;border-radius:4px;margin-bottom:2px;' +
+          'background:rgba(255,255,255,0.02);';
+
+        var label = document.createElement('span');
+        label.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.7);font-family:monospace;';
+        label.textContent = action.label;
+        row.appendChild(label);
+
+        var slotWrap = document.createElement('div');
+        slotWrap.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+        var btn = document.createElement('button');
+        btn.style.cssText =
+          'min-width:80px;padding:3px 8px;font-size:10px;font-family:monospace;' +
+          'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);' +
+          'border-radius:4px;color:' + (isEmpty ? 'rgba(255,255,255,0.25)' : 'rgba(48,213,200,0.9)') + ';' +
+          'cursor:pointer;text-align:center;transition:border-color 0.15s;';
+        btn.textContent = isEmpty ? 'click to bind' : displayText;
+
+        btn.addEventListener('click', function() {
+          if (_activeBindSlot) {
+            _activeBindSlot.el.textContent = _activeBindSlot.prevText;
+            _activeBindSlot.el.style.borderColor = 'rgba(255,255,255,0.1)';
+            _cancelBindCapture();
+          }
+
+          _activeBindSlot = { el: btn, prevText: btn.textContent };
+          btn.textContent = 'press button...';
+          btn.style.borderColor = 'rgba(48,213,200,0.6)';
+          btn.style.color = '#fbbf24';
+
+          _startBindCapture(function(capturedBtn) {
+            _bindButton(action.key, capturedBtn);
+            _activeBindSlot = null;
+            if (_panelContainer) _renderPanel(_panelContainer);
+          });
+        });
+
+        slotWrap.appendChild(btn);
+
+        // Clear button (only if bound)
+        if (!isEmpty) {
+          var clearBtn = document.createElement('button');
+          clearBtn.style.cssText =
+            'padding:2px 5px;font-size:9px;font-family:monospace;' +
+            'background:transparent;border:1px solid rgba(239,68,68,0.3);' +
+            'border-radius:3px;color:rgba(239,68,68,0.6);cursor:pointer;';
+          clearBtn.textContent = '\u00D7';
+          clearBtn.title = 'Clear binding';
+          clearBtn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            _unbindButton(action.key);
+            if (_panelContainer) _renderPanel(_panelContainer);
+          });
+          slotWrap.appendChild(clearBtn);
+        }
+
+        row.appendChild(slotWrap);
+        bindGroup.appendChild(row);
+      })(GAMEPAD_ACTIONS[bi]);
+    }
+
+    // Reset to Defaults button
+    var resetBindsBtn = document.createElement('button');
+    resetBindsBtn.style.cssText =
+      'width:100%;margin-top:6px;padding:6px;font-size:10px;font-family:monospace;' +
+      'background:rgba(48,213,200,0.06);border:1px solid rgba(48,213,200,0.2);' +
+      'border-radius:4px;color:rgba(48,213,200,0.7);cursor:pointer;';
+    resetBindsBtn.textContent = 'Reset to Defaults';
+    resetBindsBtn.addEventListener('click', function() {
+      _saveBinds(_getDefaultBinds());
+      if (_panelContainer) _renderPanel(_panelContainer);
+      PAC.UI.Components.Notification.show('Button bindings reset', 'info', 1500);
+    });
+    bindGroup.appendChild(resetBindsBtn);
+
+    // Analog note
+    var analogNote = document.createElement('div');
+    analogNote.style.cssText = 'font-family:monospace;font-size:9px;color:rgba(255,255,255,0.25);margin-top:6px;';
+    analogNote.textContent = 'Analog stick A/B and D-pad exit are fixed. Use stick for picks, board, and menus.';
+    bindGroup.appendChild(analogNote);
+
+    container.appendChild(bindGroup);
 
     // ── Analog Stick Settings ──
     var analogGroup = document.createElement('div');
@@ -1330,6 +1524,13 @@
       _renderPanel(container);
     }
   };
+
+  // Cancel bind capture when panel closes
+  Events.on('slideout:closed', function() {
+    if (_bindCaptureMode) {
+      _cancelBindCapture();
+    }
+  });
 
 
   // ═══════════════════════════════════════════════════════════════════════════
