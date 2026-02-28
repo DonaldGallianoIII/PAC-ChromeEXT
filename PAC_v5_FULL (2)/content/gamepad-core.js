@@ -1019,13 +1019,13 @@
     if (e.data.type === 'PAC_GAMEPAD_HUNT_CLOSE') {
       if (_context === 'hunt') {
         _context = _preHuntContext;
-        // Re-enable analog mode for shop context
-        if (_context === 'shop' && !_analogActive) {
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
+        _sendCursorForContext();
+        // Re-enable analog mode AFTER context message so it isn't overwritten
+        if (_context === 'shop') {
           _analogActive = true;
           window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'analog' }, '*');
         }
-        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
-        _sendCursorForContext();
       }
       return;
     }
@@ -1033,13 +1033,13 @@
     if (e.data.type === 'PAC_GAMEPAD_TARGET_CLOSE') {
       if (_context === 'target') {
         _context = _preTargetContext;
-        // Re-enable analog mode for shop context
-        if (_context === 'shop' && !_analogActive) {
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
+        _sendCursorForContext();
+        // Re-enable analog mode AFTER context message so it isn't overwritten
+        if (_context === 'shop') {
           _analogActive = true;
           window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'analog' }, '*');
         }
-        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
-        _sendCursorForContext();
       }
       return;
     }
