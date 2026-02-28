@@ -8,11 +8,14 @@
  * game commands via __AgentIO. Board context supports grab/drop/sell via DRAG_DROP
  * and SELL_POKEMON messages sent directly through __AgentIO.send().
  *
+ * Left stick drives analog mouse emulation — moves a cursor in pixel space and
+ * synthesizes pointer/mouse events for click and drag on any element.
+ *
  * Button presses fire on transition (pressed: false → true) to prevent 60fps
  * repeat-fire. D-pad supports hold-to-repeat (300ms delay, 80ms repeat).
  *
  * @author Donald Galliano III × Cassy
- * @version 1.2 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board)
+ * @version 1.3 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board) + Phase 4 (Stick Mouse)
  */
 (function() {
   'use strict';
@@ -41,6 +44,16 @@
   var _grabbedUnitId = null;  // Currently grabbed unit ID (null = not grabbing)
   var _grabbedFromX = -1;     // Where we grabbed from
   var _grabbedFromY = -1;
+
+  // ── Analog mode (stick mouse emulation) ──
+  var _analogActive = false;      // true when stick is driving cursor
+  var _analogX = 0;               // Cursor X position (screen pixels)
+  var _analogY = 0;               // Cursor Y position (screen pixels)
+  var _analogDragging = false;    // true while A is held in analog mode
+  var _analogDragStartX = 0;      // Mouse-down position for click detection
+  var _analogDragStartY = 0;
+  var _analogSpeed = 12;          // Pixels per frame at full deflection
+  var _deadzone = 0.15;           // Stick deadzone threshold
 
 
   // ════════════════════════════════════════
@@ -433,6 +446,14 @@
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
       if (_grabbedUnitId) _clearGrab(); // Clear grab on any context change
+      if (_analogActive) {
+        if (_analogDragging) {
+          _dispatchMouse('mouseup', _analogX, _analogY);
+          _analogDragging = false;
+        }
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
       _context = newContext;
 
       // Reset pick cursor when entering pick context
@@ -474,6 +495,53 @@
 
 
   // ════════════════════════════════════════
+  // ANALOG MOUSE EMULATION
+  // ════════════════════════════════════════
+
+  /**
+   * Dispatch synthetic pointer + mouse events at the given screen coordinates.
+   * Targets whichever element is at (x, y) via elementFromPoint.
+   */
+  function _dispatchMouse(eventType, x, y) {
+    var target = document.elementFromPoint(x, y);
+    if (!target) target = document.body;
+
+    var eventInit = {
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 0,
+      buttons: (eventType === 'mouseup' || eventType === 'click') ? 0 : 1
+    };
+
+    // Dispatch both pointer and mouse events for maximum compatibility.
+    // Phaser 3 listens for pointer events; DOM elements listen for mouse events.
+    target.dispatchEvent(new PointerEvent(
+      eventType.replace('mouse', 'pointer'), eventInit
+    ));
+    target.dispatchEvent(new MouseEvent(eventType, eventInit));
+  }
+
+  /**
+   * Handle A press in analog mode — start drag / click.
+   */
+  function _analogDown() {
+    _analogDragging = true;
+    _analogDragStartX = _analogX;
+    _analogDragStartY = _analogY;
+    _dispatchMouse('mousedown', _analogX, _analogY);
+    window.postMessage({
+      type: 'PAC_GAMEPAD_ANALOG_CURSOR',
+      x: _analogX, y: _analogY, dragging: true
+    }, '*');
+  }
+
+
+  // ════════════════════════════════════════
   // BUTTON ROUTING
   // ════════════════════════════════════════
 
@@ -482,6 +550,42 @@
    */
   function _onPress(button) {
     if (_context === 'disabled') return;
+
+    // D-pad press → exit analog mode, return to grid
+    if (button >= 12 && button <= 15) {
+      if (_analogActive) {
+        if (_analogDragging) {
+          _dispatchMouse('mouseup', _analogX, _analogY);
+          _analogDragging = false;
+        }
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
+    }
+
+    // A button → intercept in analog mode
+    if (button === 0 && _analogActive) {
+      _analogDown();
+      return;
+    }
+
+    // B button → intercept in analog mode
+    if (button === 1 && _analogActive) {
+      if (_analogDragging) {
+        _dispatchMouse('mouseup', _analogX, _analogY);
+        _analogDragging = false;
+        window.postMessage({
+          type: 'PAC_GAMEPAD_ANALOG_CURSOR',
+          x: _analogX, y: _analogY, dragging: false
+        }, '*');
+      } else {
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
+      return;
+    }
+
+    // Grid mode routing (existing Phase 1-3 logic)
     if (_context === 'shop') _shopPress(button);
     else if (_context === 'pick') _pickPress(button);
     else if (_context === 'board') _boardPress(button);
@@ -494,6 +598,21 @@
     // Cancel hold-to-repeat for D-pad buttons
     if (button === 12 || button === 13 || button === 14 || button === 15) {
       _cancelHoldTimer(button);
+    }
+
+    // A release in analog mode → mouseup + optional click
+    if (button === 0 && _analogActive && _analogDragging) {
+      _dispatchMouse('mouseup', _analogX, _analogY);
+      var dx = _analogX - _analogDragStartX;
+      var dy = _analogY - _analogDragStartY;
+      if (Math.sqrt(dx * dx + dy * dy) < 5) {
+        _dispatchMouse('click', _analogX, _analogY);
+      }
+      _analogDragging = false;
+      window.postMessage({
+        type: 'PAC_GAMEPAD_ANALOG_CURSOR',
+        x: _analogX, y: _analogY, dragging: false
+      }, '*');
     }
   }
 
@@ -619,6 +738,50 @@
 
       _prevButtons[b] = curr;
     }
+
+    // ── Stick input (analog mode) ──
+    if (_context !== 'disabled' && gp.axes && gp.axes.length >= 2) {
+      var stickX = gp.axes[0];
+      var stickY = gp.axes[1];
+      var magnitude = Math.sqrt(stickX * stickX + stickY * stickY);
+
+      if (magnitude > _deadzone) {
+        // Enter analog mode on stick input
+        if (!_analogActive) {
+          _analogActive = true;
+          // Initialize cursor at center of viewport if first use
+          if (_analogX === 0 && _analogY === 0) {
+            _analogX = window.innerWidth / 2;
+            _analogY = window.innerHeight / 2;
+          }
+          window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'analog' }, '*');
+        }
+
+        // Scale movement by deflection (progressive speed)
+        var normX = stickX / magnitude;
+        var normY = stickY / magnitude;
+        var speed = _analogSpeed * ((magnitude - _deadzone) / (1 - _deadzone));
+
+        _analogX += normX * speed;
+        _analogY += normY * speed;
+
+        // Clamp to viewport
+        _analogX = Math.max(0, Math.min(window.innerWidth - 1, _analogX));
+        _analogY = Math.max(0, Math.min(window.innerHeight - 1, _analogY));
+
+        // Send position to content script for visual
+        window.postMessage({
+          type: 'PAC_GAMEPAD_ANALOG_CURSOR',
+          x: _analogX, y: _analogY, dragging: _analogDragging
+        }, '*');
+
+        // Dispatch mousemove: every frame while dragging,
+        // every 3rd frame otherwise (for hover states without 60fps spam)
+        if (_analogDragging || _frameCount % 3 === 0) {
+          _dispatchMouse('mousemove', _analogX, _analogY);
+        }
+      }
+    }
   }
 
   /**
@@ -695,6 +858,16 @@
       if (_shopCursor >= _maxShopSlots) {
         _shopCursor = _maxShopSlots - 1;
       }
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_ANALOG_SPEED') {
+      _analogSpeed = e.data.speed || 12;
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_ANALOG_DEADZONE') {
+      _deadzone = e.data.deadzone || 0.15;
       return;
     }
   });

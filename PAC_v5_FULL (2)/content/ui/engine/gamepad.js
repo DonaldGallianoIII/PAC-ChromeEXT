@@ -7,7 +7,7 @@
  * and the gamepad settings panel as PAC.UI.Sections.gamepad.
  *
  * @author Donald Galliano III × Cassy
- * @version 1.2 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board)
+ * @version 1.3 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board) + Phase 4 (Stick Mouse)
  */
 (function() {
   'use strict';
@@ -28,6 +28,7 @@
   var _lastBoardY = 0;
   var _boardGrabbed = false;
   var _boardLayout = null;       // Cached pixel layout, invalidated on resize
+  var _analogMode = false;       // Whether analog cursor is active (visual state)
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -114,6 +115,9 @@
       _hudEl.style.display = 'block';
     } else if (context === 'board') {
       _hudEl.textContent = '\u25C4\u25B2\u25BC\u25BA Move  \u00B7  A Grab/Drop  \u00B7  Y Sell  \u00B7  B Back  \u00B7  LB Shop';
+      _hudEl.style.display = 'block';
+    } else if (context === 'analog') {
+      _hudEl.textContent = 'A Click/Drag  \u00B7  B Cancel  \u00B7  D-pad Grid Mode';
       _hudEl.style.display = 'block';
     } else {
       _hudEl.style.display = 'none';
@@ -265,6 +269,38 @@
   }
 
 
+  /**
+   * Position analog cursor at exact pixel coordinates.
+   * Small circle, teal idle, orange dragging. Transition disabled for 60fps updates.
+   */
+  function _positionAnalogCursor(x, y, dragging) {
+    _cursorEl.style.display = 'block';
+    _cursorEl.style.transition = 'none';
+    _cursorEl.style.width = '24px';
+    _cursorEl.style.height = '24px';
+    _cursorEl.style.left = (x - 12) + 'px';
+    _cursorEl.style.top = (y - 12) + 'px';
+    _cursorEl.style.borderRadius = '50%';
+
+    if (dragging) {
+      _cursorEl.style.borderColor = 'rgba(255,180,48,0.9)';
+      _cursorEl.style.boxShadow = '0 0 12px rgba(255,180,48,0.5)';
+    } else {
+      _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
+      _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4)';
+    }
+  }
+
+  /**
+   * Restore cursor to grid mode styling (rectangle with transitions).
+   */
+  function _resetCursorToGrid() {
+    _cursorEl.style.borderRadius = '6px';
+    _cursorEl.style.transition =
+      'left 0.08s ease-out,top 0.08s ease-out,width 0.08s ease-out,height 0.08s ease-out';
+  }
+
+
   // Reposition cursor on window resize
   window.addEventListener('resize', function() {
     _boardLayout = null;   // Force recalculation
@@ -304,7 +340,11 @@
 
     if (_flashTimer) clearTimeout(_flashTimer);
     _flashTimer = setTimeout(function() {
-      if (_boardGrabbed) {
+      if (_analogMode) {
+        // Reset to analog teal circle
+        _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
+        _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4)';
+      } else if (_boardGrabbed) {
         // Reset to grabbed state (bright green)
         _cursorEl.style.borderColor = 'rgba(72,255,128,0.9)';
         _cursorEl.style.boxShadow = '0 0 16px rgba(72,255,128,0.5),inset 0 0 8px rgba(72,255,128,0.15)';
@@ -330,9 +370,15 @@
 
       case 'PAC_GAMEPAD_CORE_READY':
         _coreReady = true;
-        // Bridge initial enabled state from localStorage to core
+        // Bridge initial config from localStorage to core
         var config = _loadConfig();
         window.postMessage({ type: 'PAC_GAMEPAD_ENABLE', active: config.enabled !== false }, '*');
+        if (config.analogSpeed) {
+          window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_SPEED', speed: config.analogSpeed }, '*');
+        }
+        if (config.deadzone) {
+          window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: config.deadzone }, '*');
+        }
         if (PAC.DEBUG_MODE) console.log('PAC Gamepad: Core ready');
         break;
 
@@ -386,15 +432,32 @@
         _boardGrabbed = false;
         break;
 
+      case 'PAC_GAMEPAD_MODE':
+        if (e.data.mode === 'analog') {
+          _analogMode = true;
+          _updateHUD('analog');
+        } else if (e.data.mode === 'grid') {
+          _analogMode = false;
+          _resetCursorToGrid();
+          _updateHUD(_currentContext);
+        }
+        break;
+
+      case 'PAC_GAMEPAD_ANALOG_CURSOR':
+        _positionAnalogCursor(e.data.x, e.data.y, e.data.dragging);
+        break;
+
       case 'PAC_GAMEPAD_CONTEXT':
         _currentContext = e.data.context;
         _boardLayout = null;
         _boardGrabbed = false;
+        _analogMode = false;
         if (e.data.context === 'disabled') {
           _cursorEl.style.display = 'none';
           _updateHUD('disabled');
         } else if (_connected) {
           _cursorEl.style.display = 'block';
+          _resetCursorToGrid();
           _updateHUD(e.data.context);
           // Reset cursor to default teal on context switch
           _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
@@ -546,6 +609,108 @@
     boardContent.innerHTML = boardHTML;
     boardGroup.appendChild(boardContent);
     container.appendChild(boardGroup);
+
+    // ── Analog Stick Settings ──
+    var analogGroup = document.createElement('div');
+    analogGroup.className = 'pac-group';
+    analogGroup.appendChild(_buildGroupHeader('ANALOG STICK', 'rgba(255,255,255,0.3)'));
+
+    // Speed selector row
+    var speedRow = document.createElement('div');
+    speedRow.style.cssText =
+      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
+
+    var speedLabel = document.createElement('span');
+    speedLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
+    speedLabel.textContent = 'Cursor Speed';
+    speedRow.appendChild(speedLabel);
+
+    var speedBtns = document.createElement('div');
+    speedBtns.style.cssText = 'display:flex;gap:4px;';
+
+    var speedOptions = [
+      { label: 'Slow', value: 6 },
+      { label: 'Med', value: 12 },
+      { label: 'Fast', value: 20 }
+    ];
+    var currentSpeed = config.analogSpeed || 12;
+
+    speedOptions.forEach(function(opt) {
+      var btn = document.createElement('button');
+      btn.textContent = opt.label;
+      var isActive = (currentSpeed === opt.value);
+      btn.style.cssText =
+        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
+        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
+        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
+        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
+      btn.addEventListener('click', function() {
+        config.analogSpeed = opt.value;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_SPEED', speed: opt.value }, '*');
+        _renderPanel(container);
+      });
+      speedBtns.appendChild(btn);
+    });
+
+    speedRow.appendChild(speedBtns);
+    analogGroup.appendChild(speedRow);
+
+    // Deadzone selector row
+    var dzRow = document.createElement('div');
+    dzRow.style.cssText =
+      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
+
+    var dzLabel = document.createElement('span');
+    dzLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
+    dzLabel.textContent = 'Deadzone';
+    dzRow.appendChild(dzLabel);
+
+    var dzBtns = document.createElement('div');
+    dzBtns.style.cssText = 'display:flex;gap:4px;';
+
+    var dzOptions = [
+      { label: 'Low', value: 0.08 },
+      { label: 'Med', value: 0.15 },
+      { label: 'High', value: 0.25 }
+    ];
+    var currentDz = config.deadzone || 0.15;
+
+    dzOptions.forEach(function(opt) {
+      var btn = document.createElement('button');
+      btn.textContent = opt.label;
+      var isActive = (currentDz === opt.value);
+      btn.style.cssText =
+        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
+        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
+        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
+        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
+      btn.addEventListener('click', function() {
+        config.deadzone = opt.value;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: opt.value }, '*');
+        _renderPanel(container);
+      });
+      dzBtns.appendChild(btn);
+    });
+
+    dzRow.appendChild(dzBtns);
+    analogGroup.appendChild(dzRow);
+
+    // Analog controls reference
+    var analogRefHTML =
+      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
+        '<div><span style="color:rgba(48,213,200,0.7);">Left Stick</span> Move cursor freely</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Click / Hold to drag</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel drag / Back to grid</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">D-pad</span> Return to grid mode</div>' +
+        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Other buttons pass through to grid context</div>' +
+      '</div>';
+
+    var analogRefContent = document.createElement('div');
+    analogRefContent.innerHTML = analogRefHTML;
+    analogGroup.appendChild(analogRefContent);
+    container.appendChild(analogGroup);
   }
 
   /**
