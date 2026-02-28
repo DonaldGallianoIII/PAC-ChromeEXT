@@ -435,26 +435,6 @@
    * Position analog cursor at exact pixel coordinates.
    * Bright white circle, orange when dragging. Transition disabled for 60fps updates.
    */
-  function _positionAnalogCursor(x, y, dragging) {
-    _cursorEl.style.display = 'block';
-    _cursorEl.style.transition = 'none';
-    _cursorEl.style.width = '28px';
-    _cursorEl.style.height = '28px';
-    _cursorEl.style.left = (x - 14) + 'px';
-    _cursorEl.style.top = (y - 14) + 'px';
-    _cursorEl.style.borderRadius = '50%';
-    _cursorEl.style.borderWidth = '3px';
-
-    if (dragging) {
-      _cursorEl.style.borderColor = 'rgba(255,180,48,1)';
-      _cursorEl.style.boxShadow = '0 0 16px rgba(255,180,48,0.7),0 0 32px rgba(255,180,48,0.3)';
-    } else {
-      _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
-      _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
-    }
-    _pauseBreathing();
-  }
-
   /**
    * Restore cursor to grid mode styling (rectangle with transitions).
    */
@@ -1075,6 +1055,17 @@
       case 'PAC_GAMEPAD_MODE':
         if (e.data.mode === 'analog') {
           _analogMode = true;
+          // Set analog cursor style once (not every frame)
+          _cursorEl.style.display = 'block';
+          _cursorEl.style.transition = 'none';
+          _cursorEl.style.animation = 'none';
+          _cursorEl.style.width = '28px';
+          _cursorEl.style.height = '28px';
+          _cursorEl.style.borderRadius = '50%';
+          _cursorEl.style.borderWidth = '3px';
+          _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
+          _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
+          if (_breatheTimer) { clearTimeout(_breatheTimer); _breatheTimer = null; }
           _updateHUD('analog');
           _hideTooltip();
         } else if (e.data.mode === 'grid') {
@@ -1084,8 +1075,15 @@
         }
         break;
 
-      case 'PAC_GAMEPAD_ANALOG_CURSOR':
-        _positionAnalogCursor(e.data.x, e.data.y, e.data.dragging);
+      case 'PAC_GAMEPAD_ANALOG_DRAG':
+        // Drag state change only (position is updated directly by core via DOM)
+        if (e.data.dragging) {
+          _cursorEl.style.borderColor = 'rgba(255,180,48,1)';
+          _cursorEl.style.boxShadow = '0 0 16px rgba(255,180,48,0.7),0 0 32px rgba(255,180,48,0.3)';
+        } else {
+          _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
+          _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
+        }
         break;
 
       case 'PAC_GAMEPAD_CONTEXT':
