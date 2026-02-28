@@ -336,23 +336,24 @@
 
   /**
    * Position analog cursor at exact pixel coordinates.
-   * Small circle, teal idle, orange dragging. Transition disabled for 60fps updates.
+   * Bright white circle, orange when dragging. Transition disabled for 60fps updates.
    */
   function _positionAnalogCursor(x, y, dragging) {
     _cursorEl.style.display = 'block';
     _cursorEl.style.transition = 'none';
-    _cursorEl.style.width = '24px';
-    _cursorEl.style.height = '24px';
-    _cursorEl.style.left = (x - 12) + 'px';
-    _cursorEl.style.top = (y - 12) + 'px';
+    _cursorEl.style.width = '28px';
+    _cursorEl.style.height = '28px';
+    _cursorEl.style.left = (x - 14) + 'px';
+    _cursorEl.style.top = (y - 14) + 'px';
     _cursorEl.style.borderRadius = '50%';
+    _cursorEl.style.borderWidth = '3px';
 
     if (dragging) {
-      _cursorEl.style.borderColor = 'rgba(255,180,48,0.9)';
-      _cursorEl.style.boxShadow = '0 0 12px rgba(255,180,48,0.5)';
+      _cursorEl.style.borderColor = 'rgba(255,180,48,1)';
+      _cursorEl.style.boxShadow = '0 0 16px rgba(255,180,48,0.7),0 0 32px rgba(255,180,48,0.3)';
     } else {
-      _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
-      _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4)';
+      _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
+      _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
     }
     _pauseBreathing();
   }
@@ -362,6 +363,7 @@
    */
   function _resetCursorToGrid() {
     _cursorEl.style.borderRadius = '6px';
+    _cursorEl.style.borderWidth = '2px';
     _cursorEl.style.transition =
       'left 0.08s ease-out,top 0.08s ease-out,width 0.08s ease-out,height 0.08s ease-out';
   }
@@ -775,9 +777,9 @@
     if (_flashTimer) clearTimeout(_flashTimer);
     _flashTimer = setTimeout(function() {
       if (_analogMode) {
-        // Reset to analog teal circle
-        _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
-        _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4)';
+        // Reset to analog white circle
+        _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
+        _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
       } else if (_boardGrabbed) {
         // Reset to grabbed state (bright green)
         _cursorEl.style.borderColor = 'rgba(72,255,128,0.9)';
