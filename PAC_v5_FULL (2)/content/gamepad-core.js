@@ -33,8 +33,6 @@
 
   var _enabled = true;        // Toggled by content script via PAC_GAMEPAD_ENABLE
   var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'hunt' | 'disabled'
-  var _shopCursor = 0;        // Current shop slot (0-based)
-  var _maxShopSlots = 6;      // Updated by content script via PAC_GAMEPAD_SLOT_COUNT
   var _prevButtons = [];      // Previous frame button states (16 booleans)
   var _pollRAF = null;        // rAF handle for polling loop
   var _holdTimers = {};       // D-pad hold-to-repeat timer IDs (keyed by button index)
@@ -87,10 +85,6 @@
   // ════════════════════════════════════════
 
   var DEFAULT_BINDS = {
-    cursorLeft:  14,   // D-pad Left
-    cursorRight: 15,   // D-pad Right
-    buy:         0,    // A
-    remove:      3,    // Y
     reroll:      6,    // LT
     levelUp:     7,    // RT
     lockShop:    2,    // X
@@ -202,11 +196,7 @@
           delete _holdTimers[button];
           return;
         }
-        if (startContext === 'shop') {
-          var holdAction = _reverseBinds[button];
-          if (holdAction === 'cursorLeft') _moveCursor(-1);
-          else if (holdAction === 'cursorRight') _moveCursor(1);
-        } else if (startContext === 'hunt') {
+        if (startContext === 'hunt') {
           window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
         }
       }, 80);
@@ -222,27 +212,6 @@
       clearInterval(_holdTimers[button]);
       delete _holdTimers[button];
     }
-  }
-
-
-  // ════════════════════════════════════════
-  // CURSOR MOVEMENT
-  // ════════════════════════════════════════
-
-  /**
-   * Move shop cursor by delta with wrapping.
-   */
-  function _moveCursor(delta) {
-    _shopCursor += delta;
-    if (_shopCursor < 0) _shopCursor = _maxShopSlots - 1;
-    if (_shopCursor >= _maxShopSlots) _shopCursor = 0;
-
-    window.postMessage({
-      type: 'PAC_GAMEPAD_CURSOR',
-      context: _context,
-      index: _shopCursor
-    }, '*');
-    _vibrate(HAPTICS.cursor);
   }
 
 
@@ -498,11 +467,6 @@
       _cancelAllHoldTimers();
       _context = 'shop';
       window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'shop' }, '*');
-      window.postMessage({
-        type: 'PAC_GAMEPAD_CURSOR',
-        context: 'shop',
-        index: _shopCursor
-      }, '*');
     }
   }
 
@@ -581,11 +545,7 @@
    * Extracted as helper so _detectContext and HUNT_CLOSE handler can share it.
    */
   function _sendCursorForContext() {
-    if (_context === 'shop') {
-      window.postMessage({
-        type: 'PAC_GAMEPAD_CURSOR', context: 'shop', index: _shopCursor
-      }, '*');
-    } else if (_context === 'pick') {
+    if (_context === 'pick') {
       window.postMessage({
         type: 'PAC_GAMEPAD_CURSOR', context: 'pick', index: _pickCursor
       }, '*');
@@ -829,19 +789,10 @@
     var action = _reverseBinds[button];
     if (!action) return;
 
-    if (action === 'cursorLeft') _moveCursor(-1);
-    else if (action === 'cursorRight') _moveCursor(1);
-    else if (action === 'buy') _guardedExec(_shopCursor);
-    else if (action === 'remove') _guardedExec(74 + _shopCursor);
-    else if (action === 'lockShop') _guardedExec(8);
+    if (action === 'lockShop') _guardedExec(8);
     else if (action === 'reroll') _guardedExec(6);
     else if (action === 'levelUp') _guardedExec(7);
     else if (action === 'endTurn') _guardedExec(9);
-
-    // Hold-to-repeat for cursor actions
-    if (action === 'cursorLeft' || action === 'cursorRight') {
-      _startHoldRepeat(button);
-    }
   }
 
 
@@ -881,11 +832,6 @@
         _cancelAllHoldTimers();
         _context = 'shop';
         window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'shop' }, '*');
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'shop',
-          index: _shopCursor
-        }, '*');
         break;
     }
 
@@ -1031,12 +977,6 @@
           type: 'PAC_GAMEPAD_CONNECTED',
           gamepadId: gamepads[i].id
         }, '*');
-        // Send initial cursor position so cursor appears at slot 0
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: _context,
-          index: _shopCursor
-        }, '*');
         _startPolling();
         return;
       }
@@ -1055,14 +995,6 @@
       _enabled = !!e.data.active;
       if (!_enabled) {
         _cancelAllHoldTimers();
-      }
-      return;
-    }
-
-    if (e.data.type === 'PAC_GAMEPAD_SLOT_COUNT') {
-      _maxShopSlots = e.data.count || 6;
-      if (_shopCursor >= _maxShopSlots) {
-        _shopCursor = _maxShopSlots - 1;
       }
       return;
     }
@@ -1123,12 +1055,6 @@
     window.postMessage({
       type: 'PAC_GAMEPAD_CONNECTED',
       gamepadId: e.gamepad.id
-    }, '*');
-    // Send initial cursor position so cursor appears at slot 0, not viewport origin
-    window.postMessage({
-      type: 'PAC_GAMEPAD_CURSOR',
-      context: _context,
-      index: _shopCursor
     }, '*');
     _startPolling();
   });

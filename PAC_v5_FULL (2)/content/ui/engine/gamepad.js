@@ -21,8 +21,6 @@
   var _connectedId = null;
   var _currentContext = 'shop';
   var _panelContainer = null;
-  var _lastSlotCount = 0;
-  var _lastCursorIndex = 0;
   var _lastPickIndex = 0;
   var _lastBoardX = 0;
   var _lastBoardY = 0;
@@ -60,10 +58,6 @@
   var _bindCaptureCallback = null;
 
   var GAMEPAD_ACTIONS = [
-    { key: 'cursorLeft',  label: 'Cursor Left',  defaultBtn: 14 },
-    { key: 'cursorRight', label: 'Cursor Right', defaultBtn: 15 },
-    { key: 'buy',         label: 'Buy',          defaultBtn: 0 },
-    { key: 'remove',      label: 'Remove',       defaultBtn: 3 },
     { key: 'reroll',      label: 'Reroll',       defaultBtn: 6 },
     { key: 'levelUp',     label: 'Level Up',     defaultBtn: 7 },
     { key: 'lockShop',    label: 'Lock Shop',    defaultBtn: 2 },
@@ -268,8 +262,7 @@
         return (btn !== null && btn !== undefined) ? (BUTTON_NAMES[btn] || '?') : '?';
       };
       _hudEl.textContent =
-        _bn('buy') + ' Buy  \u00B7  ' +
-        _bn('remove') + ' Remove  \u00B7  ' +
+        '\uD83C\uDFAE Stick Buy/Sell  \u00B7  ' +
         _bn('reroll') + ' Reroll  \u00B7  ' +
         _bn('levelUp') + ' Level  \u00B7  ' +
         _bn('lockShop') + ' Lock  \u00B7  ' +
@@ -287,37 +280,6 @@
   // ═══════════════════════════════════════════════════════════════════════════
   // CURSOR POSITIONING
   // ═══════════════════════════════════════════════════════════════════════════
-
-  function _positionShopCursor(index) {
-    _lastCursorIndex = index;
-
-    var shopContainer = document.querySelector('ul.game-pokemons-store');
-    if (!shopContainer) {
-      _cursorEl.style.display = 'none';
-      return;
-    }
-
-    var slots = shopContainer.querySelectorAll('div.my-box.clickable.game-pokemon-portrait');
-
-    // Report actual slot count back to core for cursor wrapping
-    if (slots.length !== _lastSlotCount) {
-      _lastSlotCount = slots.length;
-      window.postMessage({ type: 'PAC_GAMEPAD_SLOT_COUNT', count: slots.length }, '*');
-    }
-
-    if (slots.length === 0 || index >= slots.length) {
-      _cursorEl.style.display = 'none';
-      return;
-    }
-
-    var rect = slots[index].getBoundingClientRect();
-    _cursorEl.style.display = 'block';
-    _cursorEl.style.left = rect.left + 'px';
-    _cursorEl.style.top = rect.top + 'px';
-    _cursorEl.style.width = rect.width + 'px';
-    _cursorEl.style.height = rect.height + 'px';
-    _pauseBreathing();
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // VISIBILITY CHECK
@@ -826,9 +788,7 @@
   window.addEventListener('resize', function() {
     _boardLayout = null;   // Force recalculation
     if (!_connected) return;
-    if (_currentContext === 'shop') {
-      _positionShopCursor(_lastCursorIndex);
-    } else if (_currentContext === 'pick') {
+    if (_currentContext === 'pick') {
       _positionPickCursor(_lastPickIndex);
     } else if (_currentContext === 'board') {
       _positionBoardCursor(_lastBoardX, _lastBoardY, _boardGrabbed);
@@ -1021,9 +981,7 @@
         break;
 
       case 'PAC_GAMEPAD_CURSOR':
-        if (e.data.context === 'shop') {
-          _positionShopCursor(e.data.index);
-        } else if (e.data.context === 'pick') {
+        if (e.data.context === 'pick') {
           _positionPickCursor(e.data.index);
         } else if (e.data.context === 'board') {
           _positionBoardCursor(e.data.x, e.data.y, e.data.grabbed);
@@ -1032,12 +990,6 @@
 
       case 'PAC_GAMEPAD_EXECUTED':
         _flashCursor();
-        // After remove, re-position cursor to track shifted shop DOM
-        if (e.data.index >= 74 && e.data.index <= 79) {
-          setTimeout(function() {
-            _positionShopCursor(_lastCursorIndex);
-          }, 150);
-        }
         break;
 
       case 'PAC_GAMEPAD_BLOCKED':
@@ -1109,6 +1061,9 @@
         if (e.data.context === 'disabled') {
           _cursorEl.style.display = 'none';
           _updateHUD('disabled');
+        } else if (e.data.context === 'shop') {
+          _cursorEl.style.display = 'none';
+          _updateHUD('shop');
         } else if (_connected) {
           _cursorEl.style.display = 'block';
           _resetCursorToGrid();
