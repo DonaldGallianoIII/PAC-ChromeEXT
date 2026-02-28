@@ -12,37 +12,21 @@ const RATE_LIMIT = parseInt(Deno.env.get("RATELIMIT") || "10");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const DEUCE_PROMPT = `You are Deuce, the mascot of PAC (Pokemon Auto Chess Live Data Calculator), a Chrome extension made by Deuce222X. You live inside the extension and chat with users who open your panel.
+const DEUCE_PROMPT = `You are Deuce, the mascot of PAC (Pokemon Auto Chess Live Data Calculator), a Chrome extension by Deuce222X.
 
-Personality:
-- Casual, witty, warm. Talk like a chill gamer friend, not a customer service bot.
-- Use short responses (1-3 sentences). No essays.
-- You can joke around, react to what the user says, and have a real conversation.
-- Match the user's energy — if they're hyped, be hyped. If they're frustrated, be empathetic.
+Rules:
+- 1-2 sentences MAX. Never more.
+- Casual gamer tone. Not a customer service bot.
+- Do NOT ask follow-up questions. Just acknowledge and move on.
+- Bug reports: "Noted, the dev will see this." Done.
+- Feature requests: "Cool idea, noted." Done.
+- Feedback: Acknowledge it briefly. Done.
+- Greetings: Be chill. One sentence.
+- If they mention liking PAC, suggest a Chrome Web Store review. Once.
+- NEVER claim you can tag, prioritize, track, create tickets, notify anyone, or follow up. You have no database, no memory, no Jira, no tools. You can ONLY acknowledge what the user said. The dev reads these later. Do not lie about capabilities you do not have.
 
-How to handle different messages:
-- General chat / greetings: Just be friendly and conversational. Ask them how their games are going, what comps they're running, etc.
-- Bug reports: Take it seriously, say you'll flag it for the dev (Deuce222X). Ask for details if they're vague.
-- Feature requests: Get excited about good ideas, say you'll add it to the list. Ask follow-up questions.
-- Questions about PAC: Answer if you know, otherwise be honest that you're not sure.
-- If someone mentions enjoying PAC, naturally suggest leaving a Chrome Web Store review — but don't force it into every message.
-- Off-topic stuff: You can engage briefly but steer back to PAC/gaming naturally. Don't be a buzzkill.
-
-IMPORTANT: Do NOT just say "thanks for the feedback" to everything. Actually read what the user said and respond to it specifically. Have a real conversation.
-
-You MUST respond in JSON with exactly these fields:
-{
-  "reply": "your conversational response",
-  "category": "chat" | "bug" | "feature" | "feedback"
-}
-
-Categories:
-- "chat" — greetings, casual talk, questions, general convo. This is the default.
-- "bug" — user is reporting a bug or issue with PAC.
-- "feature" — user is requesting a new feature or improvement.
-- "feedback" — user is giving specific feedback about PAC (positive or negative critique).
-
-Be strict: only use bug/feature/feedback when the user is CLEARLY providing something actionable. "hello" is chat. "I love PAC" is chat. "the overlay glitches on mobile" is bug. "add dark mode" is feature.`;
+Respond in JSON: {"reply": "your 1-2 sentence response"}
+If JSON is too hard, just reply with plain text.`;
 
 interface ChatRequest {
   type: "chat";
@@ -168,23 +152,25 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   const data = await response.json();
   const raw = data.choices?.[0]?.message?.content?.trim() || "";
 
+  // Extract reply from Nano (may be JSON or plain text)
   let reply = "Hey, something went wrong on my end. Try again?";
-  let category = "chat";
   try {
     const parsed = JSON.parse(raw);
     reply = parsed.reply || reply;
-    category = parsed.category || "chat";
   } catch {
     reply = raw || reply;
   }
 
+  // Classify message server-side — don't trust Nano for save decisions
+  const classification = classifyMessage(body.message.trim());
+
   let feedbackId = null;
-  if (category !== "chat") {
+  if (classification.save) {
     const { data: fbData, error } = await supabase
       .from("pac_feedback")
       .insert({
         user_id: body.username || userId,
-        category: category,
+        category: classification.category,
         message: body.message.trim(),
         extension_version: "5.0.0",
       })
@@ -200,7 +186,8 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
 
   return jsonResponse(200, {
     reply,
-    category,
+    category: classification.category,
+    saved: classification.save,
     id: feedbackId,
     remaining: remaining - 1,
     limit: RATE_LIMIT,
@@ -378,6 +365,35 @@ async function logRequest(
     user_id: userId,
     request_type: requestType,
   });
+}
+
+// ─── Server-Side Message Classification (no AI dependency) ──────────────
+
+function classifyMessage(msg: string): { save: boolean; category: string } {
+  const lower = msg.toLowerCase().trim();
+
+  // Skip short greetings and filler
+  const skip = /^(hi|hey|hello|yo|sup|what'?s up|howdy|hola|lol|lmao|ok|okay|k|thanks|thx|ty|gm|gn|gg|nice|cool|wow|bruh|haha|nah|yep|yea|yes|no|nope|test|testing)[\.\!\?]*$/;
+  if (lower.length < 20 && skip.test(lower)) {
+    return { save: false, category: "chat" };
+  }
+
+  // Bug indicators
+  if (/\b(bug|broken|crash|glitch|error|not working|doesn'?t work|won'?t|can'?t|issue|problem|fix|stuck|freeze|lag|wrong|fail)\b/i.test(msg)) {
+    return { save: true, category: "bug" };
+  }
+
+  // Feature indicators
+  if (/\b(add|feature|request|could you|can you|would be nice|should have|wish|want|need|suggestion|idea|implement|option|toggle|setting|mode)\b/i.test(msg)) {
+    return { save: true, category: "feature" };
+  }
+
+  // Anything 25+ characters that isn't a greeting is worth saving
+  if (lower.length >= 25) {
+    return { save: true, category: "feedback" };
+  }
+
+  return { save: false, category: "chat" };
 }
 
 function anonymousId(req: Request): string {
