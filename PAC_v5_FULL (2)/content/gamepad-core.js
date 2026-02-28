@@ -201,9 +201,11 @@
         }
         if (startContext === 'hunt') {
           window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
+        } else if (startContext === 'target') {
+          window.postMessage({ type: 'PAC_GAMEPAD_TARGET_BUTTON', button: button }, '*');
         }
-      }, 80);
-    }, 300);
+      }, 60);
+    }, 200);
   }
 
   /**
@@ -1017,6 +1019,11 @@
     if (e.data.type === 'PAC_GAMEPAD_HUNT_CLOSE') {
       if (_context === 'hunt') {
         _context = _preHuntContext;
+        // Re-enable analog mode for shop context
+        if (_context === 'shop' && !_analogActive) {
+          _analogActive = true;
+          window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'analog' }, '*');
+        }
         window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
         _sendCursorForContext();
       }
@@ -1026,6 +1033,11 @@
     if (e.data.type === 'PAC_GAMEPAD_TARGET_CLOSE') {
       if (_context === 'target') {
         _context = _preTargetContext;
+        // Re-enable analog mode for shop context
+        if (_context === 'shop' && !_analogActive) {
+          _analogActive = true;
+          window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'analog' }, '*');
+        }
         window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
         _sendCursorForContext();
       }
