@@ -9,7 +9,13 @@
 //   supabase secrets set OPENAI_MODEL=gpt-4o-mini
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
