@@ -56,6 +56,7 @@
         "content/ui/engine/hunt.js",
         "content/ui/engine/api.js",
         "content/ui/engine/keybinds.js",
+        "content/ui/engine/gamepad.js",
         "content/ui/engine/cli.js",
 
         "lib/supabase.min.js",
@@ -90,7 +91,8 @@
         "content/extractor.js",
         "content/ws-interceptor.js",
         "content/api-core.js",
-        "content/keybind-core.js"
+        "content/keybind-core.js",
+        "content/gamepad-core.js"
       ],
       "matches": ["*://*.pokemon-auto-chess.com/*", "*://pokemon-auto-chess.com/*"]
     }

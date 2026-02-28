@@ -22,6 +22,7 @@
     { key: 'chat',      label: 'Chat',          emoji: '💬' },
     { key: 'fishing',   label: 'Fishing',       emoji: '🐟' },
     { key: 'keybinds',  label: 'Keybinds',      emoji: '⌨️' },
+    { key: 'gamepad',   label: 'Gamepad',       emoji: '🕹️' },
     { key: 'settings',  label: 'Settings',      emoji: '⚙️' }
   ];
 
