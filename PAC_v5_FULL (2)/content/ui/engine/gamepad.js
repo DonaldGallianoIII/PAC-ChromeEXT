@@ -1140,6 +1140,11 @@
         }
         break;
 
+      case 'PAC_GAMEPAD_SCROLL':
+        var scrollTarget = document.querySelector('.pac-detail-body');
+        if (scrollTarget) scrollTarget.scrollTop += e.data.delta;
+        break;
+
       case 'PAC_GAMEPAD_BIND_CAPTURED':
         if (_bindCaptureCallback) {
           _bindCaptureCallback(e.data.button);
