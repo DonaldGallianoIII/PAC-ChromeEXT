@@ -269,7 +269,7 @@
         _bn('endTurn') + ' End';
       _hudEl.style.display = 'block';
     } else if (context === 'analog') {
-      _hudEl.textContent = 'A Click/Drag  \u00B7  B Cancel  \u00B7  D-pad Shop Mode';
+      _hudEl.textContent = 'A Click/Drag  \u00B7  Y Sell  \u00B7  B Cancel  \u00B7  D-pad Exit';
       _hudEl.style.display = 'block';
     } else {
       _hudEl.style.display = 'none';

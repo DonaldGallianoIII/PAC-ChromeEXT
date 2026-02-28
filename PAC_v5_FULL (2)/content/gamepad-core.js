@@ -667,6 +667,16 @@
   }
 
   /**
+   * Dispatch a synthetic keyboard event (keydown + keyup) on the document.
+   * Used for game keybinds like "E" to sell from shop.
+   */
+  function _dispatchKey(key) {
+    var opts = { key: key, code: 'Key' + key.toUpperCase(), bubbles: true, cancelable: true };
+    document.dispatchEvent(new KeyboardEvent('keydown', opts));
+    document.dispatchEvent(new KeyboardEvent('keyup', opts));
+  }
+
+  /**
    * Handle A press in analog mode — start drag / click.
    */
   function _analogDown() {
@@ -709,6 +719,12 @@
         _analogActive = false;
         window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
       }
+      return;
+    }
+    // Y button in analog mode → sell (dispatch "E" keypress at cursor)
+    if (button === 3 && _analogActive) {
+      _dispatchKey('e');
+      _vibrate(HAPTICS.click);
       return;
     }
 
