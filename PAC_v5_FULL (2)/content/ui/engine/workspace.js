@@ -26,7 +26,7 @@
   var MIN_W = 300;
   var MIN_H = 250;
 
-  var PANEL_SECTIONS = ['search', 'team', 'intel', 'analytics', 'chat', 'fishing', 'settings', 'keybinds', 'gamepad', 'guide'];
+  var PANEL_SECTIONS = ['search', 'team', 'intel', 'analytics', 'chat', 'fishing', 'settings', 'keybinds', 'gamepad', 'guide', 'feedback'];
 
   var APP_META = {
     search:    { emoji: '🎯', name: 'Search' },
@@ -37,7 +37,8 @@
     fishing:   { emoji: '🐟', name: 'Fishing' },
     settings:  { emoji: '⚙️', name: 'Settings' },
     keybinds:  { emoji: '⌨️', name: 'Keybinds' },
-    guide:     { emoji: '📖', name: 'Guide' }
+    guide:     { emoji: '📖', name: 'Guide' },
+    feedback:  { emoji: '🤖', name: 'Deuce222x' }
   };
 
   var DEFAULT_SIZES = {
@@ -49,7 +50,8 @@
     fishing:   { w: 380, h: 450 },
     settings:  { w: 380, h: 450 },
     keybinds:  { w: 400, h: 500 },
-    guide:     { w: 420, h: 580 }
+    guide:     { w: 420, h: 580 },
+    feedback:  { w: 380, h: 550 }
   };
 
   var RESIZE_DIRS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];

@@ -47,6 +47,11 @@
       PAC.UI.Engine.Chat.init();
     }
 
+    // Initialize feedback engine (separate Supabase instance)
+    if (PAC.UI.Engine.Feedback) {
+      PAC.UI.Engine.Feedback.init();
+    }
+
     // EULA check (needs #pac-root to exist)
     var eulaAccepted = localStorage.getItem('pac_eulaAccepted');
     if (!eulaAccepted && PAC.UI.Panels.EULA) {

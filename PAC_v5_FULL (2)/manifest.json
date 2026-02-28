@@ -61,6 +61,7 @@
 
         "lib/supabase.min.js",
         "content/ui/engine/chat.js",
+        "content/ui/engine/feedback.js",
 
         "content/ui/components/autocomplete.js",
         "content/ui/components/notification.js",
@@ -76,6 +77,7 @@
         "content/ui/sections/settings.js",
         "content/ui/sections/eula.js",
         "content/ui/sections/guide.js",
+        "content/ui/sections/feedback.js",
 
         "content/ui/engine/workspace.js",
 
@@ -92,7 +94,8 @@
         "content/ws-interceptor.js",
         "content/api-core.js",
         "content/keybind-core.js",
-        "content/gamepad-core.js"
+        "content/gamepad-core.js",
+        "content/assets/deuce-sprite.png"
       ],
       "matches": ["*://*.pokemon-auto-chess.com/*", "*://pokemon-auto-chess.com/*"]
     }
