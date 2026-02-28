@@ -88,7 +88,6 @@
     reroll:      6,    // LT
     levelUp:     7,    // RT
     lockShop:    2,    // X
-    endTurn:     9,    // Start/Menu
     huntBrowser: 5     // RB
   };
 
@@ -808,7 +807,6 @@
     if (action === 'lockShop') _guardedExec(8);
     else if (action === 'reroll') _guardedExec(6);
     else if (action === 'levelUp') _guardedExec(7);
-    else if (action === 'endTurn') _guardedExec(9);
   }
 
 

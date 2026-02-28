@@ -23,6 +23,7 @@
     { key: 'fishing',   label: 'Fishing',       emoji: '🐟' },
     { key: 'keybinds',  label: 'Keybinds',      emoji: '⌨️' },
     { key: 'gamepad',   label: 'Gamepad',       emoji: '🕹️' },
+    { key: 'feedback',  label: 'Deuce222x',     emoji: '🤖' },
     { key: 'settings',  label: 'Settings',      emoji: '⚙️' }
   ];
 
