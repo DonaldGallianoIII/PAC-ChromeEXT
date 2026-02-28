@@ -109,7 +109,12 @@
       '@keyframes pac-cursor-breathe {' +
         '0%,100% { box-shadow: 0 0 12px rgba(48,213,200,0.4), inset 0 0 8px rgba(48,213,200,0.1); }' +
         '50% { box-shadow: 0 0 18px rgba(48,213,200,0.6), inset 0 0 12px rgba(48,213,200,0.2); }' +
-      '}';
+      '}' +
+      'input.pac-gp-slider { -webkit-appearance:none;width:100%;height:4px;' +
+        'background:rgba(255,255,255,0.1);border-radius:2px;outline:none;margin:0;cursor:pointer; }' +
+      'input.pac-gp-slider::-webkit-slider-thumb { -webkit-appearance:none;width:14px;height:14px;' +
+        'border-radius:50%;background:rgba(48,213,200,0.9);border:none;cursor:pointer;' +
+        'box-shadow:0 0 4px rgba(48,213,200,0.4); }';
     document.documentElement.appendChild(style);
   }
 
@@ -1181,137 +1186,118 @@
     analogGroup.className = 'pac-group';
     analogGroup.appendChild(_buildGroupHeader('ANALOG STICK', 'rgba(255,255,255,0.3)'));
 
-    // Speed selector row
-    var speedRow = document.createElement('div');
-    speedRow.style.cssText =
-      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
+    var SPEED_DEFAULT = 12;
+    var DZ_DEFAULT = 0.15;
+    var CURVE_DEFAULT = 1.0;
 
-    var speedLabel = document.createElement('span');
-    speedLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
-    speedLabel.textContent = 'Cursor Speed';
-    speedRow.appendChild(speedLabel);
+    // Helper: build a slider row with label, range, value, reset
+    function _sliderRow(label, min, max, step, current, defaultVal, formatFn, onChange) {
+      var row = document.createElement('div');
+      row.style.cssText = 'padding:6px 0;';
 
-    var speedBtns = document.createElement('div');
-    speedBtns.style.cssText = 'display:flex;gap:4px;';
+      var top = document.createElement('div');
+      top.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;';
 
-    var speedOptions = [
-      { label: 'Slow', value: 6 },
-      { label: 'Med', value: 12 },
-      { label: 'Fast', value: 20 }
-    ];
-    var currentSpeed = config.analogSpeed || 12;
+      var lbl = document.createElement('span');
+      lbl.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
+      lbl.textContent = label;
 
-    speedOptions.forEach(function(opt) {
-      var btn = document.createElement('button');
-      btn.textContent = opt.label;
-      var isActive = (currentSpeed === opt.value);
-      btn.style.cssText =
-        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
-        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
-        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
-        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
-      btn.addEventListener('click', function() {
-        config.analogSpeed = opt.value;
-        _saveConfig(config);
-        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_SPEED', speed: opt.value }, '*');
-        _renderPanel(container);
+      var right = document.createElement('div');
+      right.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+      var valSpan = document.createElement('span');
+      valSpan.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(48,213,200,0.9);min-width:36px;text-align:right;';
+      valSpan.textContent = formatFn(current);
+
+      var resetBtn = document.createElement('button');
+      resetBtn.textContent = '\u21BA';
+      resetBtn.title = 'Reset to default (' + formatFn(defaultVal) + ')';
+      var isDefault = (Math.abs(current - defaultVal) < 0.001);
+      resetBtn.style.cssText =
+        'font-size:12px;padding:0 4px;border-radius:3px;cursor:pointer;line-height:1.4;' +
+        'border:1px solid ' + (isDefault ? 'rgba(255,255,255,0.08)' : 'rgba(48,213,200,0.4)') + ';' +
+        'background:transparent;' +
+        'color:' + (isDefault ? 'rgba(255,255,255,0.15)' : 'rgba(48,213,200,0.7)') + ';';
+
+      right.appendChild(valSpan);
+      right.appendChild(resetBtn);
+      top.appendChild(lbl);
+      top.appendChild(right);
+
+      var slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'pac-gp-slider';
+      slider.min = min;
+      slider.max = max;
+      slider.step = step;
+      slider.value = current;
+
+      slider.addEventListener('input', function() {
+        var v = parseFloat(slider.value);
+        valSpan.textContent = formatFn(v);
+        var nowDefault = (Math.abs(v - defaultVal) < 0.001);
+        resetBtn.style.borderColor = nowDefault ? 'rgba(255,255,255,0.08)' : 'rgba(48,213,200,0.4)';
+        resetBtn.style.color = nowDefault ? 'rgba(255,255,255,0.15)' : 'rgba(48,213,200,0.7)';
+        onChange(v);
       });
-      speedBtns.appendChild(btn);
-    });
 
-    speedRow.appendChild(speedBtns);
-    analogGroup.appendChild(speedRow);
-
-    // Deadzone selector row
-    var dzRow = document.createElement('div');
-    dzRow.style.cssText =
-      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
-
-    var dzLabel = document.createElement('span');
-    dzLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
-    dzLabel.textContent = 'Deadzone';
-    dzRow.appendChild(dzLabel);
-
-    var dzBtns = document.createElement('div');
-    dzBtns.style.cssText = 'display:flex;gap:4px;';
-
-    var dzOptions = [
-      { label: 'Low', value: 0.08 },
-      { label: 'Med', value: 0.15 },
-      { label: 'High', value: 0.25 }
-    ];
-    var currentDz = config.deadzone || 0.15;
-
-    dzOptions.forEach(function(opt) {
-      var btn = document.createElement('button');
-      btn.textContent = opt.label;
-      var isActive = (currentDz === opt.value);
-      btn.style.cssText =
-        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
-        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
-        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
-        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
-      btn.addEventListener('click', function() {
-        config.deadzone = opt.value;
-        _saveConfig(config);
-        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: opt.value }, '*');
-        _renderPanel(container);
+      resetBtn.addEventListener('click', function() {
+        slider.value = defaultVal;
+        valSpan.textContent = formatFn(defaultVal);
+        resetBtn.style.borderColor = 'rgba(255,255,255,0.08)';
+        resetBtn.style.color = 'rgba(255,255,255,0.15)';
+        onChange(defaultVal);
       });
-      dzBtns.appendChild(btn);
-    });
 
-    dzRow.appendChild(dzBtns);
-    analogGroup.appendChild(dzRow);
+      row.appendChild(top);
+      row.appendChild(slider);
+      return row;
+    }
 
-    // Stick curve selector row
-    var curveRow = document.createElement('div');
-    curveRow.style.cssText =
-      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
-
-    var curveLabel = document.createElement('span');
-    curveLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
-    curveLabel.textContent = 'Sensitivity';
-    curveRow.appendChild(curveLabel);
-
-    var curveBtns = document.createElement('div');
-    curveBtns.style.cssText = 'display:flex;gap:4px;';
-
-    var curveOptions = [
-      { label: 'Linear', value: 'linear' },
-      { label: 'Smooth', value: 'smooth' },
-      { label: 'Precise', value: 'precise' }
-    ];
-    var currentCurve = config.stickCurve || 'smooth';
-
-    curveOptions.forEach(function(opt) {
-      var btn = document.createElement('button');
-      btn.textContent = opt.label;
-      var isActive = (currentCurve === opt.value);
-      btn.style.cssText =
-        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
-        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
-        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
-        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
-      btn.addEventListener('click', function() {
-        config.stickCurve = opt.value;
+    // Speed slider (2-30 px/frame)
+    analogGroup.appendChild(_sliderRow(
+      'Cursor Speed', 2, 30, 1, config.analogSpeed || SPEED_DEFAULT, SPEED_DEFAULT,
+      function(v) { return v + ' px'; },
+      function(v) {
+        config.analogSpeed = v;
         _saveConfig(config);
-        window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: opt.value }, '*');
-        _renderPanel(container);
-      });
-      curveBtns.appendChild(btn);
-    });
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_SPEED', speed: v }, '*');
+      }
+    ));
 
-    curveRow.appendChild(curveBtns);
-    analogGroup.appendChild(curveRow);
+    // Deadzone slider (0.02-0.40)
+    analogGroup.appendChild(_sliderRow(
+      'Deadzone', 0.02, 0.40, 0.01, config.deadzone || DZ_DEFAULT, DZ_DEFAULT,
+      function(v) { return v.toFixed(2); },
+      function(v) {
+        config.deadzone = v;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: v }, '*');
+      }
+    ));
+
+    // Sensitivity curve slider (0.5-3.0, exponent)
+    var curveVal = typeof config.stickCurve === 'number' ? config.stickCurve : CURVE_DEFAULT;
+    analogGroup.appendChild(_sliderRow(
+      'Sensitivity', 0.5, 3.0, 0.1, curveVal, CURVE_DEFAULT,
+      function(v) {
+        if (v < 0.8) return v.toFixed(1) + ' fast';
+        if (v > 1.3) return v.toFixed(1) + ' precise';
+        return v.toFixed(1) + ' linear';
+      },
+      function(v) {
+        config.stickCurve = v;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: v }, '*');
+      }
+    ));
 
     // Analog controls reference
     var analogRefHTML =
       '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
         '<div><span style="color:rgba(48,213,200,0.7);">Left Stick</span> Move cursor freely</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">A</span> Click / Hold to drag</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel drag / Back to grid</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">D-pad</span> Return to grid mode</div>' +
-        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Other buttons pass through to grid context</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel drag / Exit analog</div>' +
       '</div>';
 
     var analogRefContent = document.createElement('div');

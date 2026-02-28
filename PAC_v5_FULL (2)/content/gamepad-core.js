@@ -75,13 +75,8 @@
     hunt:    { duration: 120, weak: 0.6, strong: 0.3 }
   };
 
-  // ── Stick sensitivity curve ──
-  var CURVES = {
-    linear:  function(t) { return t; },
-    smooth:  function(t) { return t * t * (3 - 2 * t); },
-    precise: function(t) { return t * t; }
-  };
-  var _stickCurve = 'smooth';
+  // ── Stick sensitivity curve (power exponent: 1.0=linear, 2.0=precise, 0.5=responsive) ──
+  var _stickExponent = 1.0;
 
 
   // ════════════════════════════════════════
@@ -900,7 +895,7 @@
         var normX = stickX / magnitude;
         var normY = stickY / magnitude;
         var raw = (magnitude - _deadzone) / (1 - _deadzone);
-        var curved = CURVES[_stickCurve](raw);
+        var curved = Math.pow(raw, _stickExponent);
         var speed = _analogSpeed * curved;
 
         _analogX += normX * speed;
@@ -1033,7 +1028,8 @@
     }
 
     if (e.data.type === 'PAC_GAMEPAD_STICK_CURVE') {
-      _stickCurve = CURVES[e.data.curve] ? e.data.curve : 'smooth';
+      var val = parseFloat(e.data.curve);
+      _stickExponent = (val > 0 && val <= 5) ? val : 1.0;
       return;
     }
   });
