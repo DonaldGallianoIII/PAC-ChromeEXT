@@ -1330,7 +1330,7 @@
     // Analog note
     var analogNote = document.createElement('div');
     analogNote.style.cssText = 'font-family:monospace;font-size:9px;color:rgba(255,255,255,0.25);margin-top:6px;';
-    analogNote.textContent = 'Analog stick A/B and D-pad exit are fixed. Use stick for picks, board, and menus.';
+    analogNote.textContent = 'Stick: buy/sell (A click, Y sell). D-pad: picks & board only. A/B/Y in analog are fixed.';
     bindGroup.appendChild(analogNote);
 
     container.appendChild(bindGroup);
