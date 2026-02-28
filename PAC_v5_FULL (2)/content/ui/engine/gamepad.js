@@ -61,7 +61,6 @@
     { key: 'reroll',      label: 'Reroll',       defaultBtn: 6 },
     { key: 'levelUp',     label: 'Level Up',     defaultBtn: 7 },
     { key: 'lockShop',    label: 'Lock Shop',    defaultBtn: 2 },
-    { key: 'endTurn',     label: 'End Turn',     defaultBtn: 9 },
     { key: 'huntBrowser', label: 'Hunt Browser', defaultBtn: 5 }
   ];
 
@@ -265,8 +264,7 @@
         '\uD83C\uDFAE Stick Buy/Sell  \u00B7  ' +
         _bn('reroll') + ' Reroll  \u00B7  ' +
         _bn('levelUp') + ' Level  \u00B7  ' +
-        _bn('lockShop') + ' Lock  \u00B7  ' +
-        _bn('endTurn') + ' End';
+        _bn('lockShop') + ' Lock';
       _hudEl.style.display = 'block';
     } else if (context === 'analog') {
       _hudEl.textContent = 'A Click/Drag  \u00B7  Y Sell  \u00B7  B Cancel  \u00B7  D-pad Exit';
