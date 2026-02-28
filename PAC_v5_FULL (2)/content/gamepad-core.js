@@ -153,15 +153,6 @@
         }
         if (startContext === 'shop') {
           _moveCursor((button === 14) ? -1 : 1);
-        } else if (startContext === 'pick') {
-          _movePickCursor((button === 14) ? -1 : 1);
-        } else if (startContext === 'board') {
-          var dx = 0, dy = 0;
-          if (button === 14) dx = -1;
-          else if (button === 15) dx = 1;
-          else if (button === 12) dy = -1;
-          else if (button === 13) dy = 1;
-          _moveBoardCursor(dx, dy);
         } else if (startContext === 'hunt') {
           window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
         }
@@ -570,10 +561,10 @@
     var newContext;
 
     if (phase === 'shop') {
-      // Don't force shop if user manually toggled to board
-      newContext = (_context === 'board' || _context === 'hunt') ? _context : 'shop';
+      // Preserve hunt context if user opened hunt browser
+      newContext = (_context === 'hunt') ? _context : 'shop';
     } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
-      newContext = 'pick';
+      newContext = 'disabled'; // Use analog stick for picks
     } else {
       newContext = 'disabled';
     }
@@ -738,10 +729,8 @@
       return;
     }
 
-    // Grid mode routing
+    // Grid mode routing (pick/board use analog stick only)
     if (_context === 'shop') _shopPress(button);
-    else if (_context === 'pick') _pickPress(button);
-    else if (_context === 'board') _boardPress(button);
     else if (_context === 'hunt') {
       window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
       if (button >= 12 && button <= 15) {
@@ -792,19 +781,6 @@
       case 6:  _guardedExec(6); break;                 // LT = reroll
       case 7:  _guardedExec(7); break;                 // RT = level up
       case 9:  _guardedExec(9); break;                 // Menu = end turn
-      case 4:                                           // LB = switch to board
-        _cancelAllHoldTimers();
-        _context = 'board';
-        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'board' }, '*');
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'board',
-          index: _boardCursorY * 8 + _boardCursorX,
-          x: _boardCursorX,
-          y: _boardCursorY,
-          grabbed: false
-        }, '*');
-        break;
     }
 
     // Hold-to-repeat for D-pad only

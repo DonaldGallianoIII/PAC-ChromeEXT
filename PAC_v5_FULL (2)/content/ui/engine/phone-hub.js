@@ -25,6 +25,7 @@
     { id: 'chat',      emoji: '💬', name: 'Chat',      gradient: 'linear-gradient(135deg, #e056a0, #c0392b)' },
     { id: 'fishing',   emoji: '🐟', name: 'Fishing',   gradient: 'linear-gradient(135deg, #3498db, #2980b9)' },
     { id: 'keybinds',  emoji: '⌨️', name: 'Keybinds',  gradient: 'linear-gradient(135deg, #fdcb6e, #f39c12)' },
+    { id: 'gamepad',   emoji: '🕹️', name: 'Gamepad',   gradient: 'linear-gradient(135deg, #30d5c8, #20a39e)' },
     { id: 'settings',  emoji: '⚙️', name: 'Settings',  gradient: 'linear-gradient(135deg, #7f8c8d, #636e72)' }
   ];
 

@@ -170,16 +170,10 @@
    */
   function _updateHUD(context) {
     if (context === 'shop') {
-      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End  \u00B7  LB Board';
-      _hudEl.style.display = 'block';
-    } else if (context === 'pick') {
-      _hudEl.textContent = '\u25C4\u25BA Choose  \u00B7  A Pick';
-      _hudEl.style.display = 'block';
-    } else if (context === 'board') {
-      _hudEl.textContent = '\u25C4\u25B2\u25BC\u25BA Move  \u00B7  A Grab/Drop  \u00B7  Y Sell  \u00B7  B Back  \u00B7  LB Shop';
+      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End';
       _hudEl.style.display = 'block';
     } else if (context === 'analog') {
-      _hudEl.textContent = 'A Click/Drag  \u00B7  B Cancel  \u00B7  D-pad Grid Mode';
+      _hudEl.textContent = 'A Click/Drag  \u00B7  B Cancel  \u00B7  D-pad Shop Mode';
       _hudEl.style.display = 'block';
     } else {
       _hudEl.style.display = 'none';
@@ -418,8 +412,10 @@
         (selected ? '\u25B6 ' : '  ') + options[i] + '</div>';
     }
 
+    var hintText = '\u25B2\u25BC Select  \u00B7  A Confirm  \u00B7  B/RB Close';
+    if (_huntModeCount === 3) hintText += '  \u00B7  Y Abort';
     html += '<div style="margin-top:12px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">' +
-      '\u25B2\u25BC Select  \u00B7  A Confirm  \u00B7  B/RB Close</div>';
+      hintText + '</div>';
 
     _huntOverlayEl.innerHTML = html;
   }
@@ -599,6 +595,12 @@
           _renderConfigScreen();
         } else if (_huntModeIndex === 2) {
           // Abort active hunt
+          PAC.UI.Engine.Hunt.abort();
+          _closeHuntBrowser();
+        }
+        break;
+      case 3: // Y = direct abort shortcut
+        if (PAC.UI.Engine.Hunt.isActive()) {
           PAC.UI.Engine.Hunt.abort();
           _closeHuntBrowser();
         }
@@ -1165,54 +1167,14 @@
         '<div><span style="color:rgba(48,213,200,0.7);">RT</span> Level up</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">X</span> Lock/unlock shop</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">Menu</span> End turn</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Switch to board</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
+        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Use analog stick for picks, board, and menus</div>' +
       '</div>';
 
     var refContent = document.createElement('div');
     refContent.innerHTML = refHTML;
     refGroup.appendChild(refContent);
     container.appendChild(refGroup);
-
-    // ── Pick Controls ──
-    var pickGroup = document.createElement('div');
-    pickGroup.className = 'pac-group';
-    pickGroup.appendChild(_buildGroupHeader('PICK CONTROLS', 'rgba(255,255,255,0.3)'));
-
-    var pickHTML =
-      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
-        '<div><span style="color:rgba(48,213,200,0.7);">D-pad L/R</span> Cycle choices</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Pick selection</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
-        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Auto-activates during proposition screens</div>' +
-      '</div>';
-
-    var pickContent = document.createElement('div');
-    pickContent.innerHTML = pickHTML;
-    pickGroup.appendChild(pickContent);
-    container.appendChild(pickGroup);
-
-    // ── Board Controls ──
-    var boardGroup = document.createElement('div');
-    boardGroup.className = 'pac-group';
-    boardGroup.appendChild(_buildGroupHeader('BOARD CONTROLS', 'rgba(255,255,255,0.3)'));
-
-    var boardHTML =
-      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
-        '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Toggle to board (from shop)</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">D-pad</span> Move cursor on 8\u00D74 grid</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Grab unit / Drop unit</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">Y</span> Sell unit at cursor (or grabbed)</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel grab / Back to shop</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">LB</span> Return to shop</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
-        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Cursor turns green when holding a unit</div>' +
-      '</div>';
-
-    var boardContent = document.createElement('div');
-    boardContent.innerHTML = boardHTML;
-    boardGroup.appendChild(boardContent);
-    container.appendChild(boardGroup);
 
     // ── Analog Stick Settings ──
     var analogGroup = document.createElement('div');
