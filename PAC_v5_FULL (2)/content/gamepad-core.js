@@ -3,10 +3,10 @@
  *
  * Runs in PAGE CONTEXT (MAIN world). Injected by content/ui/engine/gamepad.js.
  *
- * Single rAF polling loop reads gamepad state every frame. D-pad navigates a
- * shop cursor, pick cursor, or 2D board grid; face buttons and triggers execute
- * game commands via __AgentIO. Board context supports grab/drop/sell via DRAG_DROP
- * and SELL_POKEMON messages sent directly through __AgentIO.send().
+ * Single rAF polling loop reads gamepad state every frame. D-pad navigates
+ * pick cursor and 2D board grid; analog stick handles shop buy/sell via direct
+ * click. Face buttons and triggers execute game commands via __AgentIO.
+ * Board context supports grab/drop/sell via DRAG_DROP and SELL_POKEMON.
  *
  * Left stick drives analog mouse emulation — moves a cursor in pixel space and
  * synthesizes pointer/mouse events for click and drag on any element.
