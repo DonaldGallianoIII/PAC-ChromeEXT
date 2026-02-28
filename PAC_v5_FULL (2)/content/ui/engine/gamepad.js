@@ -200,12 +200,7 @@
       '@keyframes pac-cursor-breathe {' +
         '0%,100% { box-shadow: 0 0 12px rgba(48,213,200,0.4), inset 0 0 8px rgba(48,213,200,0.1); }' +
         '50% { box-shadow: 0 0 18px rgba(48,213,200,0.6), inset 0 0 12px rgba(48,213,200,0.2); }' +
-      '}' +
-      'input.pac-gp-slider { -webkit-appearance:none;width:100%;height:4px;' +
-        'background:rgba(255,255,255,0.1);border-radius:2px;outline:none;margin:0;cursor:pointer; }' +
-      'input.pac-gp-slider::-webkit-slider-thumb { -webkit-appearance:none;width:14px;height:14px;' +
-        'border-radius:50%;background:rgba(48,213,200,0.9);border:none;cursor:pointer;' +
-        'box-shadow:0 0 4px rgba(48,213,200,0.4); }';
+      '}';
     document.documentElement.appendChild(style);
   }
 
@@ -1140,6 +1135,11 @@
         }
         break;
 
+      case 'PAC_GAMEPAD_SCROLL':
+        var scrollTarget = document.querySelector('.pac-detail-body');
+        if (scrollTarget) scrollTarget.scrollTop += e.data.delta;
+        break;
+
       case 'PAC_GAMEPAD_BIND_CAPTURED':
         if (_bindCaptureCallback) {
           _bindCaptureCallback(e.data.button);
@@ -1384,7 +1384,7 @@
     var DZ_DEFAULT = 0.15;
     var CURVE_DEFAULT = 1.0;
 
-    // Helper: build a slider row with label, range, value, reset
+    // Helper: build a slider row matching search healthbar style
     function _sliderRow(label, min, max, step, current, defaultVal, formatFn, onChange) {
       var row = document.createElement('div');
       row.style.cssText = 'padding:6px 0;';
@@ -1418,13 +1418,50 @@
       top.appendChild(lbl);
       top.appendChild(right);
 
+      // Healthbar-style slider (matches search confidence slider)
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;height:24px;transition:height 0.15s ease;';
+
+      var bar = document.createElement('div');
+      bar.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border-radius:12px;overflow:hidden;';
+
       var slider = document.createElement('input');
       slider.type = 'range';
-      slider.className = 'pac-gp-slider';
       slider.min = min;
       slider.max = max;
       slider.step = step;
       slider.value = current;
+      slider.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1;';
+
+      wrap.appendChild(bar);
+      wrap.appendChild(slider);
+
+      function _paintFill(active) {
+        var pct = ((slider.value - min) / (max - min)) * 100;
+        var swirlColors = active
+          ? '#5ef5e8, #30D5C8, #2af5dc, #30D5C8, #5ef5e8'
+          : '#30D5C8, #1a9e94, #26c4b8, #1a9e94, #30D5C8';
+        var shine = 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 50%)';
+        var swirl = 'linear-gradient(90deg, ' + swirlColors + ')';
+        var empty = 'rgba(0,0,0,0.5)';
+        var lo = Math.max(0, pct - 1);
+        var hi = Math.min(100, pct + 1);
+        bar.style.background =
+          shine + ', ' +
+          'linear-gradient(to right, transparent ' + lo + '%, ' + empty + ' ' + hi + '%), ' +
+          swirl;
+        bar.style.backgroundSize = '100% 100%, 100% 100%, 200% 100%';
+        bar.style.animation = 'pac-healthbar-swirl 2s linear infinite';
+        if (active) {
+          wrap.style.height = '30px';
+          bar.style.boxShadow = '0 0 16px rgba(48,213,200,0.25)';
+        } else {
+          wrap.style.height = '24px';
+          bar.style.boxShadow = 'none';
+        }
+      }
+
+      _paintFill(false);
 
       slider.addEventListener('input', function() {
         var v = parseFloat(slider.value);
@@ -1432,19 +1469,25 @@
         var nowDefault = (Math.abs(v - defaultVal) < 0.001);
         resetBtn.style.borderColor = nowDefault ? 'rgba(255,255,255,0.08)' : 'rgba(48,213,200,0.4)';
         resetBtn.style.color = nowDefault ? 'rgba(255,255,255,0.15)' : 'rgba(48,213,200,0.7)';
+        _paintFill(true);
         onChange(v);
       });
+
+      slider.addEventListener('mousedown', function() { _paintFill(true); });
+      slider.addEventListener('mouseup', function() { _paintFill(false); });
+      slider.addEventListener('mouseleave', function() { _paintFill(false); });
 
       resetBtn.addEventListener('click', function() {
         slider.value = defaultVal;
         valSpan.textContent = formatFn(defaultVal);
         resetBtn.style.borderColor = 'rgba(255,255,255,0.08)';
         resetBtn.style.color = 'rgba(255,255,255,0.15)';
+        _paintFill(false);
         onChange(defaultVal);
       });
 
       row.appendChild(top);
-      row.appendChild(slider);
+      row.appendChild(wrap);
       return row;
     }
 
