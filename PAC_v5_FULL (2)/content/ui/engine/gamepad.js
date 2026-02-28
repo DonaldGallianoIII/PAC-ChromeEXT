@@ -45,6 +45,17 @@
   var _huntOverlayEl = null;
   var HUNT_LIST_VISIBLE = 8;
 
+  // ── Target Browser State ──
+  var _targetOpen = false;
+  var _targetScreen = 'mode';       // 'mode' | 'add' | 'manage'
+  var _targetModeIndex = 0;         // 0=Add Target, 1=Manage Targets
+  var _targetRarityIndex = 0;
+  var _targetListIndex = 0;
+  var _targetFilteredList = [];
+  var _targetManageIndex = 0;
+  var _targetOverlayEl = null;
+  var TARGET_LIST_VISIBLE = 8;
+
   // ── Tooltip ──
   var _tooltipEl = null;
 
@@ -58,10 +69,11 @@
   var _bindCaptureCallback = null;
 
   var GAMEPAD_ACTIONS = [
-    { key: 'reroll',      label: 'Reroll',       defaultBtn: 6 },
-    { key: 'levelUp',     label: 'Level Up',     defaultBtn: 7 },
-    { key: 'lockShop',    label: 'Lock Shop',    defaultBtn: 2 },
-    { key: 'huntBrowser', label: 'Hunt Browser', defaultBtn: 5 }
+    { key: 'reroll',        label: 'Reroll',          defaultBtn: 6 },
+    { key: 'levelUp',       label: 'Level Up',        defaultBtn: 7 },
+    { key: 'lockShop',      label: 'Lock Shop',       defaultBtn: 2 },
+    { key: 'huntBrowser',   label: 'Hunt Browser',    defaultBtn: 5 },
+    { key: 'targetBrowser', label: 'Target Browser',  defaultBtn: 4 }
   ];
 
   var BUTTON_NAMES = {
@@ -782,6 +794,359 @@
   }
 
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TARGET BROWSER OVERLAY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _createTargetOverlay() {
+    if (_targetOverlayEl) return;
+    _targetOverlayEl = document.createElement('div');
+    _targetOverlayEl.id = 'pac-target-browser';
+    _targetOverlayEl.style.cssText =
+      'position:fixed;z-index:2147483645;' +
+      'left:50%;top:50%;transform:translate(-50%,-50%);' +
+      'background:rgba(10,12,18,0.96);' +
+      'border:1px solid rgba(255,180,48,0.3);border-radius:12px;padding:16px;' +
+      'box-shadow:0 8px 32px rgba(0,0,0,0.6),0 0 16px rgba(255,180,48,0.15);' +
+      'backdrop-filter:blur(12px);' +
+      'min-width:340px;max-width:480px;' +
+      'font-family:monospace;color:#fff;pointer-events:none;';
+    document.body.appendChild(_targetOverlayEl);
+  }
+
+  function _destroyTargetOverlay() {
+    if (_targetOverlayEl) { _targetOverlayEl.remove(); _targetOverlayEl = null; }
+  }
+
+
+  // ── Target Screen Renderers ──
+
+  function _renderTargetModeScreen() {
+    if (!_targetOverlayEl) return;
+
+    var targets = PAC.State.state.teamTargets || [];
+    var options = ['Add Target', 'Manage Targets (' + targets.length + ')'];
+
+    var html =
+      '<div style="font-size:13px;color:rgba(255,180,48,0.9);margin-bottom:12px;text-align:center;">TARGET BROWSER</div>';
+
+    for (var i = 0; i < options.length; i++) {
+      var selected = (i === _targetModeIndex);
+      var color = selected ? 'rgba(255,180,48,0.9)' : 'rgba(255,255,255,0.4)';
+      var bg = selected ? 'rgba(255,180,48,0.1)' : 'transparent';
+      var border = selected ? '1px solid rgba(255,180,48,0.3)' : '1px solid transparent';
+      html += '<div style="padding:8px 12px;margin:4px 0;border-radius:6px;' +
+        'background:' + bg + ';border:' + border + ';color:' + color + ';font-size:12px;">' +
+        (selected ? '\u25B6 ' : '  ') + options[i] + '</div>';
+    }
+
+    html += '<div style="margin-top:12px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">' +
+      '\u25B2\u25BC Select  \u00B7  A Confirm  \u00B7  B/LB Close</div>';
+
+    _targetOverlayEl.innerHTML = html;
+  }
+
+  function _renderTargetAddScreen() {
+    if (!_targetOverlayEl) return;
+
+    var html =
+      '<div style="font-size:13px;color:rgba(255,180,48,0.9);margin-bottom:8px;text-align:center;">ADD TARGET</div>';
+
+    // Rarity tabs (reuse same rarity list as hunt)
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">';
+    for (var r = 0; r < _huntRarities.length; r++) {
+      var sel = (r === _targetRarityIndex);
+      var tabColor = sel ? 'rgba(255,180,48,0.9)' : 'rgba(255,255,255,0.3)';
+      var tabBg = sel ? 'rgba(255,180,48,0.12)' : 'transparent';
+      html += '<span style="font-size:9px;padding:2px 6px;border-radius:3px;' +
+        'color:' + tabColor + ';background:' + tabBg + ';' +
+        'border:1px solid ' + (sel ? 'rgba(255,180,48,0.3)' : 'transparent') + ';">' +
+        _huntRarities[r].toUpperCase() + '</span>';
+    }
+    html += '</div>';
+
+    // Pokemon list
+    if (_targetFilteredList.length === 0) {
+      html += '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);font-size:11px;">No pokemon in this rarity</div>';
+    } else {
+      var trackedSet = {};
+      var targets = PAC.State.state.teamTargets || [];
+      for (var t = 0; t < targets.length; t++) {
+        trackedSet[targets[t].pokemon] = true;
+      }
+
+      var start = Math.max(0, _targetListIndex - Math.floor(TARGET_LIST_VISIBLE / 2));
+      if (start + TARGET_LIST_VISIBLE > _targetFilteredList.length) {
+        start = Math.max(0, _targetFilteredList.length - TARGET_LIST_VISIBLE);
+      }
+      var end = Math.min(start + TARGET_LIST_VISIBLE, _targetFilteredList.length);
+
+      for (var p = start; p < end; p++) {
+        var pSel = (p === _targetListIndex);
+        var isTracked = trackedSet[_targetFilteredList[p]];
+        var pColor = isTracked ? 'rgba(255,255,255,0.25)' :
+                     (pSel ? 'rgba(255,180,48,0.9)' : 'rgba(255,255,255,0.5)');
+        var pBg = pSel ? 'rgba(255,180,48,0.08)' : 'transparent';
+        var suffix = isTracked ? ' \u2713' : '';
+        html += '<div style="padding:4px 8px;font-size:11px;color:' + pColor +
+          ';background:' + pBg + ';border-radius:3px;">' +
+          (pSel ? '\u25B6 ' : '  ') + _targetFilteredList[p] + suffix + '</div>';
+      }
+
+      html += '<div style="text-align:right;font-size:9px;color:rgba(255,255,255,0.25);margin-top:4px;">' +
+        (_targetListIndex + 1) + ' / ' + _targetFilteredList.length + '</div>';
+    }
+
+    html += '<div style="margin-top:8px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">' +
+      '\u25C4\u25BA Rarity  \u00B7  \u25B2\u25BC Scroll  \u00B7  A Add  \u00B7  B Back</div>';
+
+    _targetOverlayEl.innerHTML = html;
+  }
+
+  function _renderTargetManageScreen() {
+    if (!_targetOverlayEl) return;
+
+    var targets = PAC.State.state.teamTargets || [];
+
+    var html =
+      '<div style="font-size:13px;color:rgba(255,180,48,0.9);margin-bottom:8px;text-align:center;">MANAGE TARGETS</div>';
+
+    if (targets.length === 0) {
+      html += '<div style="padding:24px;text-align:center;color:rgba(255,255,255,0.3);font-size:11px;">No targets \u2014 add some first</div>';
+    } else {
+      if (_targetManageIndex >= targets.length) _targetManageIndex = targets.length - 1;
+
+      var start = Math.max(0, _targetManageIndex - Math.floor(TARGET_LIST_VISIBLE / 2));
+      if (start + TARGET_LIST_VISIBLE > targets.length) {
+        start = Math.max(0, targets.length - TARGET_LIST_VISIBLE);
+      }
+      var end = Math.min(start + TARGET_LIST_VISIBLE, targets.length);
+
+      for (var i = start; i < end; i++) {
+        var tgt = targets[i];
+        var isSel = (i === _targetManageIndex);
+        var enabledColor = tgt.enabled ? 'rgba(46,204,113,0.8)' : 'rgba(255,71,87,0.6)';
+        var nameColor = isSel ? 'rgba(255,180,48,0.9)' : (tgt.enabled ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)');
+        var bg = isSel ? 'rgba(255,180,48,0.08)' : 'transparent';
+        var indicator = tgt.enabled ? '\u25CF' : '\u25CB';
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;' +
+          'color:' + nameColor + ';background:' + bg + ';border-radius:3px;">' +
+          (isSel ? '\u25B6 ' : '  ') +
+          '<span style="color:' + enabledColor + ';">' + indicator + '</span> ' +
+          (tgt.displayName || tgt.pokemon) +
+          ' <span style="color:rgba(255,255,255,0.2);font-size:9px;">(' + (tgt.rarity || '?') + ')</span>' +
+          '</div>';
+      }
+
+      html += '<div style="text-align:right;font-size:9px;color:rgba(255,255,255,0.25);margin-top:4px;">' +
+        (_targetManageIndex + 1) + ' / ' + targets.length + '</div>';
+    }
+
+    html += '<div style="margin-top:8px;font-size:9px;color:rgba(255,255,255,0.25);text-align:center;">' +
+      '\u25B2\u25BC Scroll  \u00B7  A Toggle  \u00B7  Y Remove  \u00B7  B Back</div>';
+
+    _targetOverlayEl.innerHTML = html;
+  }
+
+
+  // ── Target Helpers ──
+
+  function _filterTargetPokemonByRarity(rarity) {
+    var names = Object.keys(PAC.Data.POKEMON_DATA);
+    _targetFilteredList = names.filter(function(name) {
+      return PAC.Data.POKEMON_DATA[name].rarity === rarity;
+    }).sort();
+    _targetListIndex = 0;
+  }
+
+  function _addToTeamTargets(pokemonName) {
+    var state = PAC.State.state;
+    var normalized = pokemonName.toUpperCase();
+    if (state.teamTargets.some(function(t) { return t.pokemon === normalized; })) return false;
+    var info = PAC.Data.POKEMON_DATA[normalized];
+    if (!info) return false;
+    var baseForm = PAC.Utils.getBaseForm(normalized);
+    var chain = PAC.Data.EVOLUTION_CHAINS[baseForm];
+    var evo = (chain && chain[0] && chain[0].maxStars === 3) ? 'threeStar' : 'twoStar';
+    state.teamTargets.push({
+      id: Date.now() + Math.random(),
+      pokemon: normalized,
+      displayName: pokemonName,
+      rarity: info.rarity,
+      evo: evo,
+      isWild: PAC.Utils.isWildPokemon ? PAC.Utils.isWildPokemon(normalized) : false,
+      enabled: true,
+      copiesTaken: 0
+    });
+    PAC.State.saveTeamTargets();
+    PAC.UI.Events.emit('state:teamChanged', { targets: state.teamTargets });
+    return true;
+  }
+
+  function _removeFromTeamTargets(index) {
+    var targets = PAC.State.state.teamTargets;
+    if (index < 0 || index >= targets.length) return;
+    targets.splice(index, 1);
+    PAC.State.saveTeamTargets();
+    PAC.UI.Events.emit('state:teamChanged', { targets: targets });
+  }
+
+  function _toggleTeamTarget(index) {
+    var targets = PAC.State.state.teamTargets;
+    if (index < 0 || index >= targets.length) return;
+    targets[index].enabled = !targets[index].enabled;
+    PAC.State.saveTeamTargets();
+    PAC.UI.Events.emit('state:teamChanged', { targets: targets });
+  }
+
+
+  // ── Target Navigation Handlers ──
+
+  function _handleTargetButton(button) {
+    if (_targetScreen === 'mode') _handleTargetModeNav(button);
+    else if (_targetScreen === 'add') _handleTargetAddNav(button);
+    else if (_targetScreen === 'manage') _handleTargetManageNav(button);
+  }
+
+  function _handleTargetModeNav(button) {
+    switch (button) {
+      case 12: // Up
+        _targetModeIndex = (_targetModeIndex === 0) ? 1 : 0;
+        _renderTargetModeScreen();
+        break;
+      case 13: // Down
+        _targetModeIndex = (_targetModeIndex === 0) ? 1 : 0;
+        _renderTargetModeScreen();
+        break;
+      case 0: // A = confirm
+        if (_targetModeIndex === 0) {
+          // Add Target → pokemon select
+          _targetScreen = 'add';
+          _targetRarityIndex = 0;
+          _filterTargetPokemonByRarity(_huntRarities[0]);
+          _renderTargetAddScreen();
+        } else {
+          // Manage Targets
+          _targetScreen = 'manage';
+          _targetManageIndex = 0;
+          _renderTargetManageScreen();
+        }
+        break;
+      case 1: // B = close
+      case 4: // LB = close (from mode screen)
+        _closeTargetBrowser();
+        break;
+    }
+  }
+
+  function _handleTargetAddNav(button) {
+    switch (button) {
+      case 14: // Left — prev rarity tab
+        _targetRarityIndex = (_targetRarityIndex - 1 + _huntRarities.length) % _huntRarities.length;
+        _filterTargetPokemonByRarity(_huntRarities[_targetRarityIndex]);
+        _renderTargetAddScreen();
+        break;
+      case 15: // Right — next rarity tab
+        _targetRarityIndex = (_targetRarityIndex + 1) % _huntRarities.length;
+        _filterTargetPokemonByRarity(_huntRarities[_targetRarityIndex]);
+        _renderTargetAddScreen();
+        break;
+      case 12: // Up — scroll list up
+        if (_targetFilteredList.length > 0) {
+          _targetListIndex = (_targetListIndex - 1 + _targetFilteredList.length) % _targetFilteredList.length;
+          _renderTargetAddScreen();
+        }
+        break;
+      case 13: // Down — scroll list down
+        if (_targetFilteredList.length > 0) {
+          _targetListIndex = (_targetListIndex + 1) % _targetFilteredList.length;
+          _renderTargetAddScreen();
+        }
+        break;
+      case 0: // A = add target
+        if (_targetFilteredList.length > 0) {
+          var name = _targetFilteredList[_targetListIndex];
+          var added = _addToTeamTargets(name);
+          if (added) {
+            PAC.UI.Components.Notification.show('Added ' + name + ' to targets', 'success', 1500);
+            window.postMessage({ type: 'PAC_GAMEPAD_VIBRATE', profile: 'click' }, '*');
+          } else {
+            PAC.UI.Components.Notification.show(name + ' already tracked', 'warning', 1200);
+          }
+          _renderTargetAddScreen();
+        }
+        break;
+      case 1: // B = back to mode
+        _targetScreen = 'mode';
+        _renderTargetModeScreen();
+        break;
+    }
+  }
+
+  function _handleTargetManageNav(button) {
+    var targets = PAC.State.state.teamTargets || [];
+    switch (button) {
+      case 12: // Up
+        if (targets.length > 0) {
+          _targetManageIndex = (_targetManageIndex - 1 + targets.length) % targets.length;
+          _renderTargetManageScreen();
+        }
+        break;
+      case 13: // Down
+        if (targets.length > 0) {
+          _targetManageIndex = (_targetManageIndex + 1) % targets.length;
+          _renderTargetManageScreen();
+        }
+        break;
+      case 0: // A = toggle enabled/disabled
+        if (targets.length > 0) {
+          _toggleTeamTarget(_targetManageIndex);
+          _renderTargetManageScreen();
+          window.postMessage({ type: 'PAC_GAMEPAD_VIBRATE', profile: 'click' }, '*');
+        }
+        break;
+      case 3: // Y = remove target
+        if (targets.length > 0) {
+          var removed = targets[_targetManageIndex];
+          _removeFromTeamTargets(_targetManageIndex);
+          PAC.UI.Components.Notification.show('Removed ' + (removed.displayName || removed.pokemon), 'warning', 1500);
+          window.postMessage({ type: 'PAC_GAMEPAD_VIBRATE', profile: 'sell' }, '*');
+          targets = PAC.State.state.teamTargets;
+          if (targets.length === 0) {
+            _targetManageIndex = 0;
+          } else if (_targetManageIndex >= targets.length) {
+            _targetManageIndex = targets.length - 1;
+          }
+          _renderTargetManageScreen();
+        }
+        break;
+      case 1: // B = back to mode
+        _targetScreen = 'mode';
+        _renderTargetModeScreen();
+        break;
+    }
+  }
+
+
+  // ── Target Open/Close ──
+
+  function _openTargetBrowser() {
+    if (_targetOpen) return true;
+    _targetOpen = true;
+    _targetScreen = 'mode';
+    _targetModeIndex = 0;
+    _createTargetOverlay();
+    _renderTargetModeScreen();
+    return true;
+  }
+
+  function _closeTargetBrowser() {
+    _targetOpen = false;
+    _destroyTargetOverlay();
+    window.postMessage({ type: 'PAC_GAMEPAD_TARGET_CLOSE' }, '*');
+  }
+
+
   // Reposition cursor on window resize
   window.addEventListener('resize', function() {
     _boardLayout = null;   // Force recalculation
@@ -1056,6 +1421,12 @@
           }
           break;
         }
+        if (e.data.context === 'target') {
+          _cursorEl.style.display = 'none';
+          _hudEl.style.display = 'none';
+          _openTargetBrowser();
+          break;
+        }
         if (e.data.context === 'disabled') {
           _cursorEl.style.display = 'none';
           _updateHUD('disabled');
@@ -1082,6 +1453,18 @@
           _huntOpen = false;
           _destroyHuntOverlay();
           // Don't send HUNT_CLOSE — core already changed context
+        }
+        break;
+
+      case 'PAC_GAMEPAD_TARGET_BUTTON':
+        if (_targetOpen) _handleTargetButton(e.data.button);
+        break;
+
+      case 'PAC_GAMEPAD_TARGET_FORCE_CLOSE':
+        if (_targetOpen) {
+          _targetOpen = false;
+          _destroyTargetOverlay();
+          // Don't send TARGET_CLOSE — core already changed context
         }
         break;
 

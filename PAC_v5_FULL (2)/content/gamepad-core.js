@@ -32,7 +32,7 @@
   // ════════════════════════════════════════
 
   var _enabled = true;        // Toggled by content script via PAC_GAMEPAD_ENABLE
-  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'hunt' | 'disabled'
+  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'hunt' | 'target' | 'disabled'
   var _prevButtons = [];      // Previous frame button states (16 booleans)
   var _pollRAF = null;        // rAF handle for polling loop
   var _holdTimers = {};       // D-pad hold-to-repeat timer IDs (keyed by button index)
@@ -58,6 +58,9 @@
 
   // ── Hunt browser ──
   var _preHuntContext = 'shop';   // Context to restore when hunt closes
+
+  // ── Target browser ──
+  var _preTargetContext = 'shop'; // Context to restore when target browser closes
 
   // ── Direct DOM cursor (bypasses postMessage latency) ──
   var _cursorDOM = null;
@@ -85,10 +88,11 @@
   // ════════════════════════════════════════
 
   var DEFAULT_BINDS = {
-    reroll:      6,    // LT
-    levelUp:     7,    // RT
-    lockShop:    2,    // X
-    huntBrowser: 5     // RB
+    reroll:        6,    // LT
+    levelUp:       7,    // RT
+    lockShop:      2,    // X
+    huntBrowser:   5,    // RB
+    targetBrowser: 4     // LB
   };
 
   var _binds = {};          // action → button index
@@ -573,8 +577,8 @@
     var newContext;
 
     if (phase === 'shop') {
-      // Preserve hunt context if user opened hunt browser
-      newContext = (_context === 'hunt') ? _context : 'shop';
+      // Preserve hunt/target context if user opened a browser overlay
+      newContext = (_context === 'hunt' || _context === 'target') ? _context : 'shop';
     } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
       newContext = 'disabled'; // Use analog stick for picks
     } else {
@@ -584,9 +588,12 @@
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
 
-      // Force-close hunt overlay if leaving hunt context
+      // Force-close overlays if leaving their context
       if (_context === 'hunt' && newContext !== 'hunt') {
         window.postMessage({ type: 'PAC_GAMEPAD_HUNT_FORCE_CLOSE' }, '*');
+      }
+      if (_context === 'target' && newContext !== 'target') {
+        window.postMessage({ type: 'PAC_GAMEPAD_TARGET_FORCE_CLOSE' }, '*');
       }
 
       if (_grabbedUnitId) _clearGrab(); // Clear grab on any context change
@@ -666,16 +673,6 @@
   }
 
   /**
-   * Dispatch a synthetic keyboard event (keydown + keyup) on the document.
-   * Used for game keybinds like "E" to sell from shop.
-   */
-  function _dispatchKey(key) {
-    var opts = { key: key, code: 'Key' + key.toUpperCase(), bubbles: true, cancelable: true };
-    document.dispatchEvent(new KeyboardEvent('keydown', opts));
-    document.dispatchEvent(new KeyboardEvent('keyup', opts));
-  }
-
-  /**
    * Handle A press in analog mode — start drag / click.
    */
   function _analogDown() {
@@ -720,10 +717,30 @@
       }
       return;
     }
-    // Y button in analog mode → sell (dispatch "E" keypress at cursor)
+    // Y button in analog mode → remove from shop via __AgentIO
     if (button === 3 && _analogActive) {
-      _dispatchKey('e');
-      _vibrate(HAPTICS.click);
+      var yTarget = document.elementFromPoint(_analogX, _analogY);
+      if (yTarget && window.__AgentIO) {
+        var shopSlot = yTarget.closest ? yTarget.closest('.game-pokemon-portrait') : null;
+        if (shopSlot) {
+          var shopContainer = document.querySelector('ul.game-pokemons-store');
+          if (shopContainer) {
+            var shopSlots = shopContainer.querySelectorAll('div.my-box.clickable.game-pokemon-portrait');
+            for (var si = 0; si < shopSlots.length; si++) {
+              if (shopSlots[si] === shopSlot || shopSlots[si].contains(yTarget)) {
+                _guardedExec(74 + si);
+                break;
+              }
+            }
+          }
+        } else {
+          // Fallback: dispatch key on target element (not document)
+          var kOpts = { key: 'e', code: 'KeyE', bubbles: true, cancelable: true, view: window };
+          yTarget.dispatchEvent(new KeyboardEvent('keydown', kOpts));
+          yTarget.dispatchEvent(new KeyboardEvent('keyup', kOpts));
+        }
+      }
+      _vibrate(HAPTICS.sell);
       return;
     }
 
@@ -744,8 +761,9 @@
     // Block unbound buttons while analog is active (bound actions still work)
     if (_analogActive && !_reverseBinds[button]) return;
 
-    // Hunt browser — rebindable (works from any non-disabled, non-hunt context)
-    if (_reverseBinds[button] === 'huntBrowser' && _context !== 'disabled' && _context !== 'hunt') {
+    // Hunt browser — rebindable (works from any non-disabled, non-hunt, non-target context)
+    if (_reverseBinds[button] === 'huntBrowser'
+        && _context !== 'disabled' && _context !== 'hunt' && _context !== 'target') {
       if (_analogActive) {
         if (_analogDragging) {
           _dispatchMouse('mouseup', _analogX, _analogY);
@@ -763,10 +781,40 @@
       return;
     }
 
+    // Target browser — rebindable (works from any non-disabled, non-hunt, non-target context)
+    if (_reverseBinds[button] === 'targetBrowser'
+        && _context !== 'disabled' && _context !== 'target' && _context !== 'hunt') {
+      if (_analogActive) {
+        if (_analogDragging) {
+          _dispatchMouse('mouseup', _analogX, _analogY);
+          _analogDragging = false;
+        }
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
+      _preTargetContext = _context;
+      _context = 'target';
+      _cancelAllHoldTimers();
+      if (_grabbedUnitId) _clearGrab();
+      window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'target' }, '*');
+      _vibrate(HAPTICS.context);
+      return;
+    }
+
     // Grid mode routing (pick/board use analog stick only)
     if (_context === 'shop') _shopPress(button);
     else if (_context === 'hunt') {
       window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
+      if (button >= 12 && button <= 15) {
+        _vibrate(HAPTICS.cursor);
+        _startHoldRepeat(button);
+      } else if (button === 0) {
+        _vibrate(HAPTICS.click);
+      }
+      return;
+    }
+    else if (_context === 'target') {
+      window.postMessage({ type: 'PAC_GAMEPAD_TARGET_BUTTON', button: button }, '*');
       if (button >= 12 && button <= 15) {
         _vibrate(HAPTICS.cursor);
         _startHoldRepeat(button);
@@ -1026,6 +1074,15 @@
     if (e.data.type === 'PAC_GAMEPAD_HUNT_CLOSE') {
       if (_context === 'hunt') {
         _context = _preHuntContext;
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
+        _sendCursorForContext();
+      }
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_TARGET_CLOSE') {
+      if (_context === 'target') {
+        _context = _preTargetContext;
         window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
         _sendCursorForContext();
       }
