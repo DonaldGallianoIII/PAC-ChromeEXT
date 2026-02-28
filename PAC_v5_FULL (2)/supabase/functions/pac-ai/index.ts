@@ -25,11 +25,8 @@ Rules:
 - If they mention liking PAC, suggest a Chrome Web Store review. Once.
 - NEVER claim you can tag, prioritize, track, create tickets, notify anyone, or follow up. You have no database, no memory, no Jira, no tools. You can ONLY acknowledge what the user said. The dev reads these later. Do not lie about capabilities you do not have.
 
-You MUST respond in JSON:
-{"reply": "your 1-2 sentence response", "category": "chat"}
-
-category is one of: "chat", "bug", "feature", "feedback"
-Use "chat" for greetings and casual talk. Only use bug/feature/feedback when clearly actionable.`;
+Respond in JSON: {"reply": "your 1-2 sentence response"}
+If JSON is too hard, just reply with plain text.`;
 
 interface ChatRequest {
   type: "chat";
@@ -155,23 +152,25 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   const data = await response.json();
   const raw = data.choices?.[0]?.message?.content?.trim() || "";
 
+  // Extract reply from Nano (may be JSON or plain text)
   let reply = "Hey, something went wrong on my end. Try again?";
-  let category = "chat";
   try {
     const parsed = JSON.parse(raw);
     reply = parsed.reply || reply;
-    category = parsed.category || "chat";
   } catch {
     reply = raw || reply;
   }
 
+  // Classify message server-side — don't trust Nano for save decisions
+  const classification = classifyMessage(body.message.trim());
+
   let feedbackId = null;
-  if (category !== "chat") {
+  if (classification.save) {
     const { data: fbData, error } = await supabase
       .from("pac_feedback")
       .insert({
         user_id: body.username || userId,
-        category: category,
+        category: classification.category,
         message: body.message.trim(),
         extension_version: "5.0.0",
       })
@@ -187,7 +186,8 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
 
   return jsonResponse(200, {
     reply,
-    category,
+    category: classification.category,
+    saved: classification.save,
     id: feedbackId,
     remaining: remaining - 1,
     limit: RATE_LIMIT,
@@ -365,6 +365,35 @@ async function logRequest(
     user_id: userId,
     request_type: requestType,
   });
+}
+
+// ─── Server-Side Message Classification (no AI dependency) ──────────────
+
+function classifyMessage(msg: string): { save: boolean; category: string } {
+  const lower = msg.toLowerCase().trim();
+
+  // Skip short greetings and filler
+  const skip = /^(hi|hey|hello|yo|sup|what'?s up|howdy|hola|lol|lmao|ok|okay|k|thanks|thx|ty|gm|gn|gg|nice|cool|wow|bruh|haha|nah|yep|yea|yes|no|nope|test|testing)[\.\!\?]*$/;
+  if (lower.length < 20 && skip.test(lower)) {
+    return { save: false, category: "chat" };
+  }
+
+  // Bug indicators
+  if (/\b(bug|broken|crash|glitch|error|not working|doesn'?t work|won'?t|can'?t|issue|problem|fix|stuck|freeze|lag|wrong|fail)\b/i.test(msg)) {
+    return { save: true, category: "bug" };
+  }
+
+  // Feature indicators
+  if (/\b(add|feature|request|could you|can you|would be nice|should have|wish|want|need|suggestion|idea|implement|option|toggle|setting|mode)\b/i.test(msg)) {
+    return { save: true, category: "feature" };
+  }
+
+  // Anything 25+ characters that isn't a greeting is worth saving
+  if (lower.length >= 25) {
+    return { save: true, category: "feedback" };
+  }
+
+  return { save: false, category: "chat" };
 }
 
 function anonymousId(req: Request): string {
