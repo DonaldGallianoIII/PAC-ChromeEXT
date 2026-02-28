@@ -11,13 +11,12 @@
     "128": "icons/icon128.png"
   },
 
-  "permissions": ["activeTab", "storage"],
+  "permissions": [],
 
   "host_permissions": [
     "*://*.pokemon-auto-chess.com/*",
     "*://pokemon-auto-chess.com/*"
   ],
-
 
   "content_scripts": [
     {
