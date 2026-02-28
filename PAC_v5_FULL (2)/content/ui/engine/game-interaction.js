@@ -658,10 +658,20 @@
   // ═══════════════════════════════════════════════════════════════════════════
 
   var _lastHighlighterShop = '';
+  var _lastExtractionData = null;
 
-  Events.on('extraction:updated', _checkShopForTargets);
-  Events.on('state:targetChanged', function() { _lastHighlighterShop = ''; });
-  Events.on('state:teamChanged', function() { _lastHighlighterShop = ''; });
+  Events.on('extraction:updated', function(data) {
+    _lastExtractionData = data;
+    _checkShopForTargets(data);
+  });
+  Events.on('state:targetChanged', function() {
+    _lastHighlighterShop = '';
+    if (_lastExtractionData) _checkShopForTargets(_lastExtractionData);
+  });
+  Events.on('state:teamChanged', function() {
+    _lastHighlighterShop = '';
+    if (_lastExtractionData) _checkShopForTargets(_lastExtractionData);
+  });
 
   function _checkShopForTargets(data) {
     if (!data || !data.playerShops || !state.playerName) {
