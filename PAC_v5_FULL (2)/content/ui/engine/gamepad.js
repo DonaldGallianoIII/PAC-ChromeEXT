@@ -435,24 +435,24 @@
    * Position analog cursor at exact pixel coordinates.
    * Bright white circle, orange when dragging. Transition disabled for 60fps updates.
    */
+  var _lastAnalogDragging = false;
+
   function _positionAnalogCursor(x, y, dragging) {
-    _cursorEl.style.display = 'block';
-    _cursorEl.style.transition = 'none';
-    _cursorEl.style.width = '28px';
-    _cursorEl.style.height = '28px';
+    // Hot path — only update position. Style props set once on mode enter.
     _cursorEl.style.left = (x - 14) + 'px';
     _cursorEl.style.top = (y - 14) + 'px';
-    _cursorEl.style.borderRadius = '50%';
-    _cursorEl.style.borderWidth = '3px';
 
-    if (dragging) {
-      _cursorEl.style.borderColor = 'rgba(255,180,48,1)';
-      _cursorEl.style.boxShadow = '0 0 16px rgba(255,180,48,0.7),0 0 32px rgba(255,180,48,0.3)';
-    } else {
-      _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
-      _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
+    // Only update drag styling on state change
+    if (dragging !== _lastAnalogDragging) {
+      _lastAnalogDragging = dragging;
+      if (dragging) {
+        _cursorEl.style.borderColor = 'rgba(255,180,48,1)';
+        _cursorEl.style.boxShadow = '0 0 16px rgba(255,180,48,0.7),0 0 32px rgba(255,180,48,0.3)';
+      } else {
+        _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
+        _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
+      }
     }
-    _pauseBreathing();
   }
 
   /**
@@ -1075,6 +1075,18 @@
       case 'PAC_GAMEPAD_MODE':
         if (e.data.mode === 'analog') {
           _analogMode = true;
+          _lastAnalogDragging = false;
+          // Set analog cursor style once (not every frame)
+          _cursorEl.style.display = 'block';
+          _cursorEl.style.transition = 'none';
+          _cursorEl.style.animation = 'none';
+          _cursorEl.style.width = '28px';
+          _cursorEl.style.height = '28px';
+          _cursorEl.style.borderRadius = '50%';
+          _cursorEl.style.borderWidth = '3px';
+          _cursorEl.style.borderColor = 'rgba(255,255,255,1)';
+          _cursorEl.style.boxShadow = '0 0 16px rgba(255,255,255,0.7),0 0 32px rgba(255,255,255,0.3)';
+          if (_breatheTimer) { clearTimeout(_breatheTimer); _breatheTimer = null; }
           _updateHUD('analog');
           _hideTooltip();
         } else if (e.data.mode === 'grid') {
