@@ -11,11 +11,14 @@
  * Left stick drives analog mouse emulation — moves a cursor in pixel space and
  * synthesizes pointer/mouse events for click and drag on any element.
  *
+ * RB opens the hunt browser overlay (new 'hunt' context). In hunt context, all
+ * button presses are forwarded to the content script via PAC_GAMEPAD_HUNT_BUTTON.
+ *
  * Button presses fire on transition (pressed: false → true) to prevent 60fps
  * repeat-fire. D-pad supports hold-to-repeat (300ms delay, 80ms repeat).
  *
  * @author Donald Galliano III × Cassy
- * @version 1.3 — Phase 1 (Shop) + Phase 2 (Pick) + Phase 3 (Board) + Phase 4 (Stick Mouse)
+ * @version 1.5 — Phase 1-5 + Phase 6 (Polish)
  */
 (function() {
   'use strict';
@@ -29,7 +32,7 @@
   // ════════════════════════════════════════
 
   var _enabled = true;        // Toggled by content script via PAC_GAMEPAD_ENABLE
-  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'disabled'
+  var _context = 'shop';      // 'shop' | 'pick' | 'board' | 'hunt' | 'disabled'
   var _shopCursor = 0;        // Current shop slot (0-based)
   var _maxShopSlots = 6;      // Updated by content script via PAC_GAMEPAD_SLOT_COUNT
   var _prevButtons = [];      // Previous frame button states (16 booleans)
@@ -54,6 +57,59 @@
   var _analogDragStartY = 0;
   var _analogSpeed = 12;          // Pixels per frame at full deflection
   var _deadzone = 0.15;           // Stick deadzone threshold
+
+  // ── Hunt browser ──
+  var _preHuntContext = 'shop';   // Context to restore when hunt closes
+
+  // ── Haptic feedback ──
+  var _hapticsEnabled = true;
+  var HAPTICS = {
+    click:   { duration: 40,  weak: 0.2, strong: 0.0 },
+    cursor:  { duration: 20,  weak: 0.1, strong: 0.0 },
+    grab:    { duration: 60,  weak: 0.4, strong: 0.1 },
+    drop:    { duration: 80,  weak: 0.3, strong: 0.2 },
+    sell:    { duration: 100, weak: 0.5, strong: 0.2 },
+    blocked: { duration: 50,  weak: 0.0, strong: 0.3 },
+    error:   { duration: 150, weak: 0.0, strong: 0.5 },
+    context: { duration: 70,  weak: 0.15, strong: 0.1 },
+    hunt:    { duration: 120, weak: 0.6, strong: 0.3 }
+  };
+
+  // ── Stick sensitivity curve ──
+  var CURVES = {
+    linear:  function(t) { return t; },
+    smooth:  function(t) { return t * t * (3 - 2 * t); },
+    precise: function(t) { return t * t; }
+  };
+  var _stickCurve = 'smooth';
+
+
+  // ════════════════════════════════════════
+  // HAPTIC FEEDBACK
+  // ════════════════════════════════════════
+
+  /**
+   * Fire a haptic pulse on the connected gamepad's vibration actuator.
+   * Silently fails if haptics are disabled or hardware doesn't support it.
+   */
+  function _vibrate(profile) {
+    if (!_hapticsEnabled) return;
+    try {
+      var gamepads = navigator.getGamepads();
+      var gp = null;
+      for (var i = 0; i < gamepads.length; i++) {
+        if (gamepads[i]) { gp = gamepads[i]; break; }
+      }
+      if (gp && gp.vibrationActuator) {
+        gp.vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0,
+          duration: profile.duration,
+          weakMagnitude: profile.weak,
+          strongMagnitude: profile.strong
+        });
+      }
+    } catch (e) { /* silently fail — controller may not support vibration */ }
+  }
 
 
   // ════════════════════════════════════════
@@ -106,6 +162,8 @@
           else if (button === 12) dy = -1;
           else if (button === 13) dy = 1;
           _moveBoardCursor(dx, dy);
+        } else if (startContext === 'hunt') {
+          window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
         }
       }, 80);
     }, 300);
@@ -140,6 +198,7 @@
       context: _context,
       index: _shopCursor
     }, '*');
+    _vibrate(HAPTICS.cursor);
   }
 
 
@@ -177,6 +236,7 @@
       context: 'pick',
       index: _pickCursor
     }, '*');
+    _vibrate(HAPTICS.cursor);
   }
 
 
@@ -215,6 +275,35 @@
       y: _boardCursorY,
       grabbed: !!_grabbedUnitId
     }, '*');
+    _vibrate(HAPTICS.cursor);
+    _sendTooltipForCurrentCell();
+  }
+
+  /**
+   * Check unit presence at current board cursor and send tooltip data.
+   * Uses mask[42 + cellIndex] as a cheap presence check before calling obs().
+   */
+  function _sendTooltipForCurrentCell() {
+    var tipMask = window.__AgentIO ? window.__AgentIO.mask() : null;
+    var tipCell = _boardCursorY * 8 + _boardCursorX;
+    if (tipMask && tipMask[42 + tipCell] === 1) {
+      var tipObs = window.__AgentIO.obs();
+      var tipUnit = tipObs && tipObs.self ?
+        _getUnitAt(tipObs.self.board, _boardCursorX, _boardCursorY) : null;
+      if (tipUnit) {
+        window.postMessage({
+          type: 'PAC_GAMEPAD_UNIT_INFO',
+          name: tipUnit.name, stars: tipUnit.stars, types: tipUnit.types,
+          items: tipUnit.items, hp: tipUnit.hp, maxHP: tipUnit.maxHP,
+          atk: tipUnit.atk, def: tipUnit.def, range: tipUnit.range,
+          rarity: tipUnit.rarity || '', shiny: tipUnit.shiny
+        }, '*');
+      } else {
+        window.postMessage({ type: 'PAC_GAMEPAD_UNIT_INFO', name: null }, '*');
+      }
+    } else {
+      window.postMessage({ type: 'PAC_GAMEPAD_UNIT_INFO', name: null }, '*');
+    }
   }
 
   /**
@@ -240,12 +329,14 @@
   function _boardAction() {
     if (!window.__AgentIO) {
       window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
 
     var obs = window.__AgentIO.obs();
     if (!obs || !obs.self || !obs.self.board) {
       window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
 
@@ -256,6 +347,7 @@
       var unit = _getUnitAt(board, _boardCursorX, _boardCursorY);
       if (!unit) {
         window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'empty_cell' }, '*');
+        _vibrate(HAPTICS.blocked);
         return;
       }
       _grabbedUnitId = unit.id;
@@ -268,6 +360,7 @@
         x: _boardCursorX,
         y: _boardCursorY
       }, '*');
+      _vibrate(HAPTICS.grab);
       return;
     }
 
@@ -276,6 +369,8 @@
       // Dropped on same cell = cancel grab
       _clearGrab();
       window.postMessage({ type: 'PAC_GAMEPAD_GRAB_CANCELLED' }, '*');
+      _vibrate(HAPTICS.drop);
+      _sendTooltipForCurrentCell();
       return;
     }
 
@@ -293,7 +388,9 @@
       toX: _boardCursorX,
       toY: _boardCursorY
     }, '*');
+    _vibrate(HAPTICS.drop);
     _clearGrab();
+    _sendTooltipForCurrentCell();
   }
 
   /**
@@ -302,6 +399,7 @@
   function _boardSell() {
     if (!window.__AgentIO) {
       window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
 
@@ -314,7 +412,9 @@
         action: 'sell',
         unitId: _grabbedUnitId
       }, '*');
+      _vibrate(HAPTICS.sell);
       _clearGrab();
+      _sendTooltipForCurrentCell();
       return;
     }
 
@@ -322,11 +422,13 @@
     var obs = window.__AgentIO.obs();
     if (!obs || !obs.self || !obs.self.board) {
       window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'no_room' }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
     var unit = _getUnitAt(obs.self.board, _boardCursorX, _boardCursorY);
     if (!unit) {
       window.postMessage({ type: 'PAC_GAMEPAD_BLOCKED', reason: 'empty_cell' }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
     window.__AgentIO.send('SELL_POKEMON', unit.id);
@@ -337,6 +439,8 @@
       unitId: unit.id,
       unitName: unit.name
     }, '*');
+    _vibrate(HAPTICS.sell);
+    _sendTooltipForCurrentCell();
   }
 
   /**
@@ -390,6 +494,7 @@
         index: actionIndex,
         reason: 'no_room'
       }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
 
@@ -400,6 +505,7 @@
         index: actionIndex,
         reason: 'no_room'
       }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
 
@@ -409,6 +515,7 @@
         index: actionIndex,
         reason: _getBlockReason(actionIndex)
       }, '*');
+      _vibrate(HAPTICS.blocked);
       return;
     }
 
@@ -417,6 +524,34 @@
       type: 'PAC_GAMEPAD_EXECUTED',
       index: actionIndex
     }, '*');
+    _vibrate(HAPTICS.click);
+  }
+
+
+  // ════════════════════════════════════════
+  // CONTEXT HELPERS
+  // ════════════════════════════════════════
+
+  /**
+   * Send cursor position message for the current context.
+   * Extracted as helper so _detectContext and HUNT_CLOSE handler can share it.
+   */
+  function _sendCursorForContext() {
+    if (_context === 'shop') {
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR', context: 'shop', index: _shopCursor
+      }, '*');
+    } else if (_context === 'pick') {
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR', context: 'pick', index: _pickCursor
+      }, '*');
+    } else if (_context === 'board') {
+      window.postMessage({
+        type: 'PAC_GAMEPAD_CURSOR', context: 'board',
+        index: _boardCursorY * 8 + _boardCursorX,
+        x: _boardCursorX, y: _boardCursorY, grabbed: !!_grabbedUnitId
+      }, '*');
+    }
   }
 
 
@@ -436,7 +571,7 @@
 
     if (phase === 'shop') {
       // Don't force shop if user manually toggled to board
-      newContext = (_context === 'board') ? 'board' : 'shop';
+      newContext = (_context === 'board' || _context === 'hunt') ? _context : 'shop';
     } else if (phase === 'pick_pokemon' || phase === 'pick_item') {
       newContext = 'pick';
     } else {
@@ -445,6 +580,12 @@
 
     if (newContext !== _context) {
       _cancelAllHoldTimers(); // CRITICAL: kill timers on context change
+
+      // Force-close hunt overlay if leaving hunt context
+      if (_context === 'hunt' && newContext !== 'hunt') {
+        window.postMessage({ type: 'PAC_GAMEPAD_HUNT_FORCE_CLOSE' }, '*');
+      }
+
       if (_grabbedUnitId) _clearGrab(); // Clear grab on any context change
       if (_analogActive) {
         if (_analogDragging) {
@@ -455,6 +596,7 @@
         window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
       }
       _context = newContext;
+      if (newContext !== 'disabled') _vibrate(HAPTICS.context);
 
       // Reset pick cursor when entering pick context
       if (newContext === 'pick') {
@@ -468,28 +610,7 @@
       }, '*');
 
       // Send initial cursor position for the new context
-      if (newContext === 'pick') {
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'pick',
-          index: _pickCursor
-        }, '*');
-      } else if (newContext === 'shop') {
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'shop',
-          index: _shopCursor
-        }, '*');
-      } else if (newContext === 'board') {
-        window.postMessage({
-          type: 'PAC_GAMEPAD_CURSOR',
-          context: 'board',
-          index: _boardCursorY * 8 + _boardCursorX,
-          x: _boardCursorX,
-          y: _boardCursorY,
-          grabbed: false
-        }, '*');
-      }
+      _sendCursorForContext();
     }
   }
 
@@ -585,10 +706,39 @@
       return;
     }
 
-    // Grid mode routing (existing Phase 1-3 logic)
+    // RB → open hunt browser (works from any non-disabled, non-hunt context)
+    if (button === 5 && _context !== 'disabled' && _context !== 'hunt') {
+      if (_analogActive) {
+        if (_analogDragging) {
+          _dispatchMouse('mouseup', _analogX, _analogY);
+          _analogDragging = false;
+        }
+        _analogActive = false;
+        window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'grid' }, '*');
+      }
+      _preHuntContext = _context;
+      _context = 'hunt';
+      _cancelAllHoldTimers();
+      if (_grabbedUnitId) _clearGrab();
+      window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: 'hunt' }, '*');
+      _vibrate(HAPTICS.context);
+      return;
+    }
+
+    // Grid mode routing
     if (_context === 'shop') _shopPress(button);
     else if (_context === 'pick') _pickPress(button);
     else if (_context === 'board') _boardPress(button);
+    else if (_context === 'hunt') {
+      window.postMessage({ type: 'PAC_GAMEPAD_HUNT_BUTTON', button: button }, '*');
+      if (button >= 12 && button <= 15) {
+        _vibrate(HAPTICS.cursor);
+        _startHoldRepeat(button);
+      } else if (button === 0) {
+        _vibrate(HAPTICS.click);
+      }
+      return;
+    }
   }
 
   /**
@@ -757,10 +907,12 @@
           window.postMessage({ type: 'PAC_GAMEPAD_MODE', mode: 'analog' }, '*');
         }
 
-        // Scale movement by deflection (progressive speed)
+        // Scale movement by deflection with sensitivity curve
         var normX = stickX / magnitude;
         var normY = stickY / magnitude;
-        var speed = _analogSpeed * ((magnitude - _deadzone) / (1 - _deadzone));
+        var raw = (magnitude - _deadzone) / (1 - _deadzone);
+        var curved = CURVES[_stickCurve](raw);
+        var speed = _analogSpeed * curved;
 
         _analogX += normX * speed;
         _analogY += normY * speed;
@@ -868,6 +1020,31 @@
 
     if (e.data.type === 'PAC_GAMEPAD_ANALOG_DEADZONE') {
       _deadzone = e.data.deadzone || 0.15;
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_HUNT_CLOSE') {
+      if (_context === 'hunt') {
+        _context = _preHuntContext;
+        window.postMessage({ type: 'PAC_GAMEPAD_CONTEXT', context: _context }, '*');
+        _sendCursorForContext();
+      }
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_VIBRATE') {
+      var profile = HAPTICS[e.data.profile];
+      if (profile) _vibrate(profile);
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_HAPTICS') {
+      _hapticsEnabled = !!e.data.enabled;
+      return;
+    }
+
+    if (e.data.type === 'PAC_GAMEPAD_STICK_CURVE') {
+      _stickCurve = CURVES[e.data.curve] ? e.data.curve : 'smooth';
       return;
     }
   });
