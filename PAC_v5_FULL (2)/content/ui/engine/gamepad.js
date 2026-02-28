@@ -1032,6 +1032,12 @@
 
       case 'PAC_GAMEPAD_EXECUTED':
         _flashCursor();
+        // After remove, re-position cursor to track shifted shop DOM
+        if (e.data.index >= 74 && e.data.index <= 79) {
+          setTimeout(function() {
+            _positionShopCursor(_lastCursorIndex);
+          }, 150);
+        }
         break;
 
       case 'PAC_GAMEPAD_BLOCKED':
