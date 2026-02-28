@@ -54,6 +54,29 @@
   var _styleInjected = false;
   var _breatheTimer = null;
 
+  // ── Button Bindings ──
+  var _bindCaptureMode = false;
+  var _bindCaptureCallback = null;
+
+  var GAMEPAD_ACTIONS = [
+    { key: 'cursorLeft',  label: 'Cursor Left',  defaultBtn: 14 },
+    { key: 'cursorRight', label: 'Cursor Right', defaultBtn: 15 },
+    { key: 'buy',         label: 'Buy',          defaultBtn: 0 },
+    { key: 'remove',      label: 'Remove',       defaultBtn: 3 },
+    { key: 'reroll',      label: 'Reroll',       defaultBtn: 6 },
+    { key: 'levelUp',     label: 'Level Up',     defaultBtn: 7 },
+    { key: 'lockShop',    label: 'Lock Shop',    defaultBtn: 2 },
+    { key: 'endTurn',     label: 'End Turn',     defaultBtn: 9 },
+    { key: 'huntBrowser', label: 'Hunt Browser', defaultBtn: 5 }
+  ];
+
+  var BUTTON_NAMES = {
+    0: 'A', 1: 'B', 2: 'X', 3: 'Y',
+    4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT',
+    8: 'Back', 9: 'Start', 10: 'L3', 11: 'R3',
+    12: 'D-Up', 13: 'D-Down', 14: 'D-Left', 15: 'D-Right'
+  };
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CONFIG PERSISTENCE
@@ -70,6 +93,74 @@
 
   function _saveConfig(config) {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUTTON BIND PERSISTENCE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _getDefaultBinds() {
+    var defaults = {};
+    for (var i = 0; i < GAMEPAD_ACTIONS.length; i++) {
+      defaults[GAMEPAD_ACTIONS[i].key] = GAMEPAD_ACTIONS[i].defaultBtn;
+    }
+    return defaults;
+  }
+
+  function _getEffectiveBinds() {
+    var config = _loadConfig();
+    var saved = config.binds || null;
+    var defaults = _getDefaultBinds();
+    if (!saved) return defaults;
+    var result = {};
+    for (var i = 0; i < GAMEPAD_ACTIONS.length; i++) {
+      var key = GAMEPAD_ACTIONS[i].key;
+      result[key] = (saved[key] !== undefined && saved[key] !== null)
+        ? saved[key]
+        : defaults[key];
+    }
+    return result;
+  }
+
+  function _saveBinds(binds) {
+    var config = _loadConfig();
+    config.binds = binds;
+    _saveConfig(config);
+    window.postMessage({ type: 'PAC_GAMEPAD_BIND_UPDATE', binds: binds }, '*');
+  }
+
+  function _bindButton(actionKey, button) {
+    var binds = _getEffectiveBinds();
+    // One-to-one: clear any action already using this button
+    var keys = Object.keys(binds);
+    for (var i = 0; i < keys.length; i++) {
+      if (binds[keys[i]] === button) {
+        binds[keys[i]] = null;
+      }
+    }
+    binds[actionKey] = button;
+    _saveBinds(binds);
+    return binds;
+  }
+
+  function _unbindButton(actionKey) {
+    var binds = _getEffectiveBinds();
+    binds[actionKey] = null;
+    _saveBinds(binds);
+    return binds;
+  }
+
+  function _startBindCapture(callback) {
+    _bindCaptureCallback = callback;
+    _bindCaptureMode = true;
+    window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURE_MODE', active: true }, '*');
+  }
+
+  function _cancelBindCapture() {
+    _bindCaptureCallback = null;
+    _bindCaptureMode = false;
+    window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURE_MODE', active: false }, '*');
   }
 
 
@@ -109,7 +200,12 @@
       '@keyframes pac-cursor-breathe {' +
         '0%,100% { box-shadow: 0 0 12px rgba(48,213,200,0.4), inset 0 0 8px rgba(48,213,200,0.1); }' +
         '50% { box-shadow: 0 0 18px rgba(48,213,200,0.6), inset 0 0 12px rgba(48,213,200,0.2); }' +
-      '}';
+      '}' +
+      'input.pac-gp-slider { -webkit-appearance:none;width:100%;height:4px;' +
+        'background:rgba(255,255,255,0.1);border-radius:2px;outline:none;margin:0;cursor:pointer; }' +
+      'input.pac-gp-slider::-webkit-slider-thumb { -webkit-appearance:none;width:14px;height:14px;' +
+        'border-radius:50%;background:rgba(48,213,200,0.9);border:none;cursor:pointer;' +
+        'box-shadow:0 0 4px rgba(48,213,200,0.4); }';
     document.documentElement.appendChild(style);
   }
 
@@ -170,7 +266,18 @@
    */
   function _updateHUD(context) {
     if (context === 'shop') {
-      _hudEl.textContent = 'A Buy  \u00B7  Y Remove  \u00B7  LT Reroll  \u00B7  RT Level  \u00B7  X Lock  \u00B7  Menu End';
+      var binds = _getEffectiveBinds();
+      var _bn = function(actionKey) {
+        var btn = binds[actionKey];
+        return (btn !== null && btn !== undefined) ? (BUTTON_NAMES[btn] || '?') : '?';
+      };
+      _hudEl.textContent =
+        _bn('buy') + ' Buy  \u00B7  ' +
+        _bn('remove') + ' Remove  \u00B7  ' +
+        _bn('reroll') + ' Reroll  \u00B7  ' +
+        _bn('levelUp') + ' Level  \u00B7  ' +
+        _bn('lockShop') + ' Lock  \u00B7  ' +
+        _bn('endTurn') + ' End';
       _hudEl.style.display = 'block';
     } else if (context === 'analog') {
       _hudEl.textContent = 'A Click/Drag  \u00B7  B Cancel  \u00B7  D-pad Shop Mode';
@@ -913,6 +1020,9 @@
         if (config.stickCurve) {
           window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: config.stickCurve }, '*');
         }
+        // Push saved button binds to core
+        var savedBinds = _getEffectiveBinds();
+        window.postMessage({ type: 'PAC_GAMEPAD_BIND_UPDATE', binds: savedBinds }, '*');
         if (PAC.DEBUG_MODE) console.log('PAC Gamepad: Core ready');
         break;
 
@@ -1027,6 +1137,15 @@
           _showTooltip(e.data);
         } else {
           _hideTooltip();
+        }
+        break;
+
+      case 'PAC_GAMEPAD_BIND_CAPTURED':
+        if (_bindCaptureCallback) {
+          _bindCaptureCallback(e.data.button);
+          _bindCaptureCallback = null;
+          _bindCaptureMode = false;
+          window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURE_MODE', active: false }, '*');
         }
         break;
     }
@@ -1153,165 +1272,226 @@
     toggleGroup.appendChild(hapRow);
     container.appendChild(toggleGroup);
 
-    // ── Button Reference ──
-    var refGroup = document.createElement('div');
-    refGroup.className = 'pac-group';
-    refGroup.appendChild(_buildGroupHeader('SHOP CONTROLS', 'rgba(255,255,255,0.3)'));
+    // ── Button Bindings ──
+    var bindGroup = document.createElement('div');
+    bindGroup.className = 'pac-group';
+    bindGroup.appendChild(_buildGroupHeader('BUTTON BINDINGS'));
 
-    var refHTML =
-      '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
-        '<div><span style="color:rgba(48,213,200,0.7);">D-pad L/R</span> Navigate shop slots</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">A</span> Buy at cursor</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">Y</span> Remove at cursor</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">LT</span> Reroll shop</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">RT</span> Level up</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">X</span> Lock/unlock shop</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">Menu</span> End turn</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">RB</span> Open Hunt Browser</div>' +
-        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Use analog stick for picks, board, and menus</div>' +
-      '</div>';
+    var currentBinds = _getEffectiveBinds();
+    var _activeBindSlot = null;
 
-    var refContent = document.createElement('div');
-    refContent.innerHTML = refHTML;
-    refGroup.appendChild(refContent);
-    container.appendChild(refGroup);
+    for (var bi = 0; bi < GAMEPAD_ACTIONS.length; bi++) {
+      (function(action) {
+        var boundBtn = currentBinds[action.key];
+        var displayText = (boundBtn !== null && boundBtn !== undefined)
+          ? (BUTTON_NAMES[boundBtn] || 'Btn ' + boundBtn)
+          : '';
+        var isEmpty = (boundBtn === null || boundBtn === undefined);
+
+        var row = document.createElement('div');
+        row.style.cssText =
+          'display:flex;align-items:center;justify-content:space-between;' +
+          'padding:5px 8px;border-radius:4px;margin-bottom:2px;' +
+          'background:rgba(255,255,255,0.02);';
+
+        var label = document.createElement('span');
+        label.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.7);font-family:monospace;';
+        label.textContent = action.label;
+        row.appendChild(label);
+
+        var slotWrap = document.createElement('div');
+        slotWrap.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+        var btn = document.createElement('button');
+        btn.style.cssText =
+          'min-width:80px;padding:3px 8px;font-size:10px;font-family:monospace;' +
+          'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);' +
+          'border-radius:4px;color:' + (isEmpty ? 'rgba(255,255,255,0.25)' : 'rgba(48,213,200,0.9)') + ';' +
+          'cursor:pointer;text-align:center;transition:border-color 0.15s;';
+        btn.textContent = isEmpty ? 'click to bind' : displayText;
+
+        btn.addEventListener('click', function() {
+          if (_activeBindSlot) {
+            _activeBindSlot.el.textContent = _activeBindSlot.prevText;
+            _activeBindSlot.el.style.borderColor = 'rgba(255,255,255,0.1)';
+            _cancelBindCapture();
+          }
+
+          _activeBindSlot = { el: btn, prevText: btn.textContent };
+          btn.textContent = 'press button...';
+          btn.style.borderColor = 'rgba(48,213,200,0.6)';
+          btn.style.color = '#fbbf24';
+
+          _startBindCapture(function(capturedBtn) {
+            _bindButton(action.key, capturedBtn);
+            _activeBindSlot = null;
+            if (_panelContainer) _renderPanel(_panelContainer);
+          });
+        });
+
+        slotWrap.appendChild(btn);
+
+        // Clear button (only if bound)
+        if (!isEmpty) {
+          var clearBtn = document.createElement('button');
+          clearBtn.style.cssText =
+            'padding:2px 5px;font-size:9px;font-family:monospace;' +
+            'background:transparent;border:1px solid rgba(239,68,68,0.3);' +
+            'border-radius:3px;color:rgba(239,68,68,0.6);cursor:pointer;';
+          clearBtn.textContent = '\u00D7';
+          clearBtn.title = 'Clear binding';
+          clearBtn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            _unbindButton(action.key);
+            if (_panelContainer) _renderPanel(_panelContainer);
+          });
+          slotWrap.appendChild(clearBtn);
+        }
+
+        row.appendChild(slotWrap);
+        bindGroup.appendChild(row);
+      })(GAMEPAD_ACTIONS[bi]);
+    }
+
+    // Reset to Defaults button
+    var resetBindsBtn = document.createElement('button');
+    resetBindsBtn.style.cssText =
+      'width:100%;margin-top:6px;padding:6px;font-size:10px;font-family:monospace;' +
+      'background:rgba(48,213,200,0.06);border:1px solid rgba(48,213,200,0.2);' +
+      'border-radius:4px;color:rgba(48,213,200,0.7);cursor:pointer;';
+    resetBindsBtn.textContent = 'Reset to Defaults';
+    resetBindsBtn.addEventListener('click', function() {
+      _saveBinds(_getDefaultBinds());
+      if (_panelContainer) _renderPanel(_panelContainer);
+      PAC.UI.Components.Notification.show('Button bindings reset', 'info', 1500);
+    });
+    bindGroup.appendChild(resetBindsBtn);
+
+    // Analog note
+    var analogNote = document.createElement('div');
+    analogNote.style.cssText = 'font-family:monospace;font-size:9px;color:rgba(255,255,255,0.25);margin-top:6px;';
+    analogNote.textContent = 'Analog stick A/B and D-pad exit are fixed. Use stick for picks, board, and menus.';
+    bindGroup.appendChild(analogNote);
+
+    container.appendChild(bindGroup);
 
     // ── Analog Stick Settings ──
     var analogGroup = document.createElement('div');
     analogGroup.className = 'pac-group';
     analogGroup.appendChild(_buildGroupHeader('ANALOG STICK', 'rgba(255,255,255,0.3)'));
 
-    // Speed selector row
-    var speedRow = document.createElement('div');
-    speedRow.style.cssText =
-      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
+    var SPEED_DEFAULT = 12;
+    var DZ_DEFAULT = 0.15;
+    var CURVE_DEFAULT = 1.0;
 
-    var speedLabel = document.createElement('span');
-    speedLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
-    speedLabel.textContent = 'Cursor Speed';
-    speedRow.appendChild(speedLabel);
+    // Helper: build a slider row with label, range, value, reset
+    function _sliderRow(label, min, max, step, current, defaultVal, formatFn, onChange) {
+      var row = document.createElement('div');
+      row.style.cssText = 'padding:6px 0;';
 
-    var speedBtns = document.createElement('div');
-    speedBtns.style.cssText = 'display:flex;gap:4px;';
+      var top = document.createElement('div');
+      top.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;';
 
-    var speedOptions = [
-      { label: 'Slow', value: 6 },
-      { label: 'Med', value: 12 },
-      { label: 'Fast', value: 20 }
-    ];
-    var currentSpeed = config.analogSpeed || 12;
+      var lbl = document.createElement('span');
+      lbl.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
+      lbl.textContent = label;
 
-    speedOptions.forEach(function(opt) {
-      var btn = document.createElement('button');
-      btn.textContent = opt.label;
-      var isActive = (currentSpeed === opt.value);
-      btn.style.cssText =
-        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
-        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
-        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
-        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
-      btn.addEventListener('click', function() {
-        config.analogSpeed = opt.value;
-        _saveConfig(config);
-        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_SPEED', speed: opt.value }, '*');
-        _renderPanel(container);
+      var right = document.createElement('div');
+      right.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+      var valSpan = document.createElement('span');
+      valSpan.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(48,213,200,0.9);min-width:36px;text-align:right;';
+      valSpan.textContent = formatFn(current);
+
+      var resetBtn = document.createElement('button');
+      resetBtn.textContent = '\u21BA';
+      resetBtn.title = 'Reset to default (' + formatFn(defaultVal) + ')';
+      var isDefault = (Math.abs(current - defaultVal) < 0.001);
+      resetBtn.style.cssText =
+        'font-size:12px;padding:0 4px;border-radius:3px;cursor:pointer;line-height:1.4;' +
+        'border:1px solid ' + (isDefault ? 'rgba(255,255,255,0.08)' : 'rgba(48,213,200,0.4)') + ';' +
+        'background:transparent;' +
+        'color:' + (isDefault ? 'rgba(255,255,255,0.15)' : 'rgba(48,213,200,0.7)') + ';';
+
+      right.appendChild(valSpan);
+      right.appendChild(resetBtn);
+      top.appendChild(lbl);
+      top.appendChild(right);
+
+      var slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'pac-gp-slider';
+      slider.min = min;
+      slider.max = max;
+      slider.step = step;
+      slider.value = current;
+
+      slider.addEventListener('input', function() {
+        var v = parseFloat(slider.value);
+        valSpan.textContent = formatFn(v);
+        var nowDefault = (Math.abs(v - defaultVal) < 0.001);
+        resetBtn.style.borderColor = nowDefault ? 'rgba(255,255,255,0.08)' : 'rgba(48,213,200,0.4)';
+        resetBtn.style.color = nowDefault ? 'rgba(255,255,255,0.15)' : 'rgba(48,213,200,0.7)';
+        onChange(v);
       });
-      speedBtns.appendChild(btn);
-    });
 
-    speedRow.appendChild(speedBtns);
-    analogGroup.appendChild(speedRow);
-
-    // Deadzone selector row
-    var dzRow = document.createElement('div');
-    dzRow.style.cssText =
-      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
-
-    var dzLabel = document.createElement('span');
-    dzLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
-    dzLabel.textContent = 'Deadzone';
-    dzRow.appendChild(dzLabel);
-
-    var dzBtns = document.createElement('div');
-    dzBtns.style.cssText = 'display:flex;gap:4px;';
-
-    var dzOptions = [
-      { label: 'Low', value: 0.08 },
-      { label: 'Med', value: 0.15 },
-      { label: 'High', value: 0.25 }
-    ];
-    var currentDz = config.deadzone || 0.15;
-
-    dzOptions.forEach(function(opt) {
-      var btn = document.createElement('button');
-      btn.textContent = opt.label;
-      var isActive = (currentDz === opt.value);
-      btn.style.cssText =
-        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
-        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
-        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
-        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
-      btn.addEventListener('click', function() {
-        config.deadzone = opt.value;
-        _saveConfig(config);
-        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: opt.value }, '*');
-        _renderPanel(container);
+      resetBtn.addEventListener('click', function() {
+        slider.value = defaultVal;
+        valSpan.textContent = formatFn(defaultVal);
+        resetBtn.style.borderColor = 'rgba(255,255,255,0.08)';
+        resetBtn.style.color = 'rgba(255,255,255,0.15)';
+        onChange(defaultVal);
       });
-      dzBtns.appendChild(btn);
-    });
 
-    dzRow.appendChild(dzBtns);
-    analogGroup.appendChild(dzRow);
+      row.appendChild(top);
+      row.appendChild(slider);
+      return row;
+    }
 
-    // Stick curve selector row
-    var curveRow = document.createElement('div');
-    curveRow.style.cssText =
-      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
-
-    var curveLabel = document.createElement('span');
-    curveLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
-    curveLabel.textContent = 'Sensitivity';
-    curveRow.appendChild(curveLabel);
-
-    var curveBtns = document.createElement('div');
-    curveBtns.style.cssText = 'display:flex;gap:4px;';
-
-    var curveOptions = [
-      { label: 'Linear', value: 'linear' },
-      { label: 'Smooth', value: 'smooth' },
-      { label: 'Precise', value: 'precise' }
-    ];
-    var currentCurve = config.stickCurve || 'smooth';
-
-    curveOptions.forEach(function(opt) {
-      var btn = document.createElement('button');
-      btn.textContent = opt.label;
-      var isActive = (currentCurve === opt.value);
-      btn.style.cssText =
-        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
-        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
-        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
-        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
-      btn.addEventListener('click', function() {
-        config.stickCurve = opt.value;
+    // Speed slider (2-30 px/frame)
+    analogGroup.appendChild(_sliderRow(
+      'Cursor Speed', 2, 30, 1, config.analogSpeed || SPEED_DEFAULT, SPEED_DEFAULT,
+      function(v) { return v + ' px'; },
+      function(v) {
+        config.analogSpeed = v;
         _saveConfig(config);
-        window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: opt.value }, '*');
-        _renderPanel(container);
-      });
-      curveBtns.appendChild(btn);
-    });
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_SPEED', speed: v }, '*');
+      }
+    ));
 
-    curveRow.appendChild(curveBtns);
-    analogGroup.appendChild(curveRow);
+    // Deadzone slider (0.02-0.40)
+    analogGroup.appendChild(_sliderRow(
+      'Deadzone', 0.02, 0.40, 0.01, config.deadzone || DZ_DEFAULT, DZ_DEFAULT,
+      function(v) { return v.toFixed(2); },
+      function(v) {
+        config.deadzone = v;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: v }, '*');
+      }
+    ));
+
+    // Sensitivity curve slider (0.5-3.0, exponent)
+    var curveVal = typeof config.stickCurve === 'number' ? config.stickCurve : CURVE_DEFAULT;
+    analogGroup.appendChild(_sliderRow(
+      'Sensitivity', 0.5, 3.0, 0.1, curveVal, CURVE_DEFAULT,
+      function(v) {
+        if (v < 0.8) return v.toFixed(1) + ' fast';
+        if (v > 1.3) return v.toFixed(1) + ' precise';
+        return v.toFixed(1) + ' linear';
+      },
+      function(v) {
+        config.stickCurve = v;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: v }, '*');
+      }
+    ));
 
     // Analog controls reference
     var analogRefHTML =
       '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
         '<div><span style="color:rgba(48,213,200,0.7);">Left Stick</span> Move cursor freely</div>' +
         '<div><span style="color:rgba(48,213,200,0.7);">A</span> Click / Hold to drag</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel drag / Back to grid</div>' +
-        '<div><span style="color:rgba(48,213,200,0.7);">D-pad</span> Return to grid mode</div>' +
-        '<div style="color:rgba(255,255,255,0.25);font-size:9px;margin-top:4px;">Other buttons pass through to grid context</div>' +
+        '<div><span style="color:rgba(48,213,200,0.7);">B</span> Cancel drag / Exit analog</div>' +
       '</div>';
 
     var analogRefContent = document.createElement('div');
@@ -1344,6 +1524,13 @@
       _renderPanel(container);
     }
   };
+
+  // Cancel bind capture when panel closes
+  Events.on('slideout:closed', function() {
+    if (_bindCaptureMode) {
+      _cancelBindCapture();
+    }
+  });
 
 
   // ═══════════════════════════════════════════════════════════════════════════
