@@ -979,11 +979,11 @@
       }
     }
 
-    // ── Right stick: scroll PAC menus (throttled to every 3rd frame) ──
-    if (_frameCount % 3 === 0 && gp.axes && gp.axes.length >= 4) {
+    // ── Right stick: scroll PAC menus (every 10th frame ≈ 6/sec) ──
+    if (_frameCount % 10 === 0 && gp.axes && gp.axes.length >= 4) {
       var rStickY = gp.axes[3];
       if (Math.abs(rStickY) > _deadzone) {
-        window.postMessage({ type: 'PAC_GAMEPAD_SCROLL', delta: rStickY * 24 }, '*');
+        window.postMessage({ type: 'PAC_GAMEPAD_SCROLL', delta: rStickY * 80 }, '*');
       }
     }
   }
