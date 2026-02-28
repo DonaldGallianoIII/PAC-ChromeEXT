@@ -766,6 +766,9 @@
       }
     }
 
+    // Block non-D-pad buttons while analog is active (D-pad exits analog above)
+    if (_analogActive) return;
+
     // Hunt browser — rebindable (works from any non-disabled, non-hunt context)
     if (_reverseBinds[button] === 'huntBrowser' && _context !== 'disabled' && _context !== 'hunt') {
       if (_analogActive) {
