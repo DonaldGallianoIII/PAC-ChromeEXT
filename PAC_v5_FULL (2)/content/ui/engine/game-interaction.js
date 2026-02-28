@@ -51,7 +51,7 @@
   }
 
   function _isInsidePAC(el) {
-    if (!el) return false;
+    if (!el || !el.closest) return false;
     if (el.closest('#pac-root')) return true;
     if (el.closest('[id^="pac-"]')) return true;
     if (el.closest('.pac-autocomplete-dropdown')) return true;
