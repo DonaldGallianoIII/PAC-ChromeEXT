@@ -766,9 +766,6 @@
       }
     }
 
-    // Block unbound buttons while analog is active (bound actions still work)
-    if (_analogActive && !_reverseBinds[button]) return;
-
     // Hunt browser — rebindable (works from any non-disabled, non-hunt, non-target context)
     if (_reverseBinds[button] === 'huntBrowser'
         && _context !== 'disabled' && _context !== 'hunt' && _context !== 'target') {
