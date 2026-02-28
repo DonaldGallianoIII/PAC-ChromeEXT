@@ -571,9 +571,13 @@
    * Maps game phases to gamepad contexts.
    */
   function _detectContext() {
-    if (!window.__AgentIO) return;
+    if (!window.__AgentIO) {
+      if (_frameCount % 600 === 0) console.log('[PAC Gamepad] _detectContext: no __AgentIO');
+      return;
+    }
 
     var phase = window.__AgentIO.phase();
+    if (_frameCount % 600 === 0) console.log('[PAC Gamepad] phase=' + phase + ' ctx=' + _context);
     var newContext;
 
     if (phase === 'shop') {
@@ -695,6 +699,10 @@
    * Handle a button press event (transition from unpressed to pressed).
    */
   function _onPress(button) {
+    console.log('[PAC Gamepad] _onPress btn=' + button +
+      ' ctx=' + _context + ' analog=' + _analogActive +
+      ' rev=' + JSON.stringify(_reverseBinds));
+
     // ── Capture mode: intercept for binding UI, don't execute ──
     if (_captureMode) {
       window.postMessage({ type: 'PAC_GAMEPAD_BIND_CAPTURED', button: button }, '*');
