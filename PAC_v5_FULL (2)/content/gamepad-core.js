@@ -670,15 +670,27 @@
       }
       return;
     }
-    // Y button in analog mode → sell/remove via "E" keypress on window
-    // The analog stick already updates the game's hover state via mousemove,
-    // so the game knows what's under the cursor. Dispatch on window where
-    // Phaser's keyboard manager listens.
+    // Y button in analog mode → sell bench/board units OR remove from shop
     if (button === 3 && _analogActive) {
-      var eOpts = { key: 'e', code: 'KeyE', keyCode: 69, which: 69,
-                    bubbles: true, cancelable: true, view: window };
-      window.dispatchEvent(new KeyboardEvent('keydown', eOpts));
-      window.dispatchEvent(new KeyboardEvent('keyup', eOpts));
+      var yEl = document.elementFromPoint(_analogX, _analogY);
+      // Shop slots are React DOM — synthetic keyboard events don't reach them.
+      // Detect shop slot and use __AgentIO directly.
+      var shopContainer = document.querySelector('ul.game-pokemons-store');
+      if (yEl && shopContainer && shopContainer.contains(yEl)) {
+        var slots = shopContainer.querySelectorAll('div.my-box.clickable.game-pokemon-portrait');
+        for (var si = 0; si < slots.length; si++) {
+          if (slots[si].contains(yEl) || slots[si] === yEl) {
+            _guardedExec(74 + si);
+            break;
+          }
+        }
+      } else {
+        // Bench/board units — Phaser listens on window for keyboard events
+        var eOpts = { key: 'e', code: 'KeyE', keyCode: 69, which: 69,
+                      bubbles: true, cancelable: true, view: window };
+        window.dispatchEvent(new KeyboardEvent('keydown', eOpts));
+        window.dispatchEvent(new KeyboardEvent('keyup', eOpts));
+      }
       _vibrate(HAPTICS.sell);
       return;
     }
