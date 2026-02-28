@@ -7,7 +7,7 @@
  * and the gamepad settings panel as PAC.UI.Sections.gamepad.
  *
  * @author Donald Galliano III × Cassy
- * @version 1.4 — Phase 1-4 + Phase 5 (Hunt Browser)
+ * @version 1.5 — Phase 1-5 + Phase 6 (Polish)
  */
 (function() {
   'use strict';
@@ -46,6 +46,13 @@
   var _huntConfigField = 0;        // 0=qty, 1=budget
   var _huntOverlayEl = null;
   var HUNT_LIST_VISIBLE = 8;
+
+  // ── Tooltip ──
+  var _tooltipEl = null;
+
+  // ── Cursor animations ──
+  var _styleInjected = false;
+  var _breatheTimer = null;
 
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -87,6 +94,44 @@
     } catch (e) {
       console.error('PAC Gamepad: Injection error', e);
     }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CURSOR ANIMATION STYLES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _injectCursorStyles() {
+    if (_styleInjected) return;
+    _styleInjected = true;
+    var style = document.createElement('style');
+    style.textContent =
+      '@keyframes pac-cursor-breathe {' +
+        '0%,100% { box-shadow: 0 0 12px rgba(48,213,200,0.4), inset 0 0 8px rgba(48,213,200,0.1); }' +
+        '50% { box-shadow: 0 0 18px rgba(48,213,200,0.6), inset 0 0 12px rgba(48,213,200,0.2); }' +
+      '}';
+    document.documentElement.appendChild(style);
+  }
+
+  function _pauseBreathing() {
+    _cursorEl.style.animation = 'none';
+    if (_breatheTimer) clearTimeout(_breatheTimer);
+    _breatheTimer = setTimeout(function() {
+      if (_cursorEl.style.display !== 'none') {
+        _cursorEl.style.animation = 'pac-cursor-breathe 2s ease-in-out infinite';
+      }
+    }, 500);
+  }
+
+  function _pulseContext() {
+    _cursorEl.style.transform = 'scale(1.3)';
+    _cursorEl.style.transition = 'transform 0.15s ease-out';
+    setTimeout(function() {
+      _cursorEl.style.transform = 'scale(1)';
+      setTimeout(function() {
+        _cursorEl.style.transition = '';
+      }, 150);
+    }, 150);
   }
 
 
@@ -174,6 +219,7 @@
     _cursorEl.style.top = rect.top + 'px';
     _cursorEl.style.width = rect.width + 'px';
     _cursorEl.style.height = rect.height + 'px';
+    _pauseBreathing();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -227,6 +273,7 @@
     _cursorEl.style.top = rect.top + 'px';
     _cursorEl.style.width = rect.width + 'px';
     _cursorEl.style.height = rect.height + 'px';
+    _pauseBreathing();
   }
 
 
@@ -283,6 +330,7 @@
       _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
       _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
     }
+    _pauseBreathing();
   }
 
 
@@ -306,6 +354,7 @@
       _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
       _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4)';
     }
+    _pauseBreathing();
   }
 
   /**
@@ -654,6 +703,7 @@
       _closeHuntBrowser();
       return;
     }
+    window.postMessage({ type: 'PAC_GAMEPAD_VIBRATE', profile: 'hunt' }, '*');
     if (_huntMode === 'single') {
       PAC.UI.Engine.Hunt.start({
         target: _huntTarget, qty: _huntQty, budget: _huntBudget, isTeamHunt: false
@@ -743,6 +793,96 @@
 
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // BOARD UNIT TOOLTIP
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function _createTooltip() {
+    if (_tooltipEl) return;
+    _tooltipEl = document.createElement('div');
+    _tooltipEl.id = 'pac-gamepad-tooltip';
+    _tooltipEl.style.cssText =
+      'position:fixed;z-index:2147483643;pointer-events:none;' +
+      'background:rgba(10,12,18,0.96);' +
+      'border:1px solid rgba(48,213,200,0.3);border-radius:8px;padding:8px 10px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,0.5),0 0 8px rgba(48,213,200,0.1);' +
+      'backdrop-filter:blur(8px);' +
+      'font-family:monospace;font-size:10px;color:rgba(255,255,255,0.8);' +
+      'white-space:nowrap;display:none;';
+    document.documentElement.appendChild(_tooltipEl);
+  }
+
+  function _positionTooltip() {
+    if (!_tooltipEl || _tooltipEl.style.display === 'none') return;
+    if (!_boardLayout) return;
+
+    var cx = _boardLayout.originX + _lastBoardX * _boardLayout.cellW;
+    var cy = _boardLayout.originY - _lastBoardY * _boardLayout.cellH;
+    var tw = _tooltipEl.offsetWidth;
+    var th = _tooltipEl.offsetHeight;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+
+    // Default: right + above cursor
+    var tx = cx + _boardLayout.cellW + 8;
+    var ty = cy - th - 4;
+
+    // Flip left if overflows right
+    if (tx + tw > vw - 8) {
+      tx = cx - tw - 8;
+    }
+    // Flip below if overflows top
+    if (ty < 8) {
+      ty = cy + _boardLayout.cellH + 4;
+    }
+    // Final clamp
+    tx = Math.max(8, Math.min(vw - tw - 8, tx));
+    ty = Math.max(8, Math.min(vh - th - 8, ty));
+
+    _tooltipEl.style.left = tx + 'px';
+    _tooltipEl.style.top = ty + 'px';
+  }
+
+  function _showTooltip(data) {
+    _createTooltip();
+
+    var name = data.name.charAt(0).toUpperCase() + data.name.slice(1);
+    var stars = '';
+    for (var s = 0; s < (data.stars || 1); s++) stars += '\u2605';
+
+    var html =
+      '<div style="color:rgba(48,213,200,0.9);font-size:11px;margin-bottom:4px;">' +
+        name + ' <span style="color:rgba(255,215,0,0.8);">' + stars + '</span>' +
+        (data.shiny ? ' <span style="color:rgba(255,180,48,0.9);">\u2726</span>' : '') +
+      '</div>';
+
+    if (data.types && data.types.length) {
+      html += '<div style="color:rgba(255,255,255,0.4);font-size:9px;margin-bottom:3px;">' +
+        data.types.join(' / ') + '</div>';
+    }
+
+    html += '<div style="display:flex;gap:8px;color:rgba(255,255,255,0.6);font-size:9px;">' +
+      '<span>HP ' + (data.hp || 0) + '/' + (data.maxHP || 0) + '</span>' +
+      '<span>ATK ' + (data.atk || 0) + '</span>' +
+      '<span>DEF ' + (data.def || 0) + '</span>' +
+      '<span>RNG ' + (data.range || 0) + '</span>' +
+    '</div>';
+
+    if (data.items && data.items.length) {
+      html += '<div style="color:rgba(255,180,48,0.7);font-size:9px;margin-top:3px;">' +
+        data.items.join(', ') + '</div>';
+    }
+
+    _tooltipEl.innerHTML = html;
+    _tooltipEl.style.display = 'block';
+    _positionTooltip();
+  }
+
+  function _hideTooltip() {
+    if (_tooltipEl) _tooltipEl.style.display = 'none';
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // MESSAGE BRIDGE (page context → content script)
   // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL: Register BEFORE _injectCore() so PAC_GAMEPAD_CORE_READY is not lost.
@@ -762,6 +902,12 @@
         }
         if (config.deadzone) {
           window.postMessage({ type: 'PAC_GAMEPAD_ANALOG_DEADZONE', deadzone: config.deadzone }, '*');
+        }
+        if (config.haptics !== undefined) {
+          window.postMessage({ type: 'PAC_GAMEPAD_HAPTICS', enabled: config.haptics }, '*');
+        }
+        if (config.stickCurve) {
+          window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: config.stickCurve }, '*');
         }
         if (PAC.DEBUG_MODE) console.log('PAC Gamepad: Core ready');
         break;
@@ -820,6 +966,7 @@
         if (e.data.mode === 'analog') {
           _analogMode = true;
           _updateHUD('analog');
+          _hideTooltip();
         } else if (e.data.mode === 'grid') {
           _analogMode = false;
           _resetCursorToGrid();
@@ -836,6 +983,7 @@
         _boardLayout = null;
         _boardGrabbed = false;
         _analogMode = false;
+        _hideTooltip();
         if (e.data.context === 'hunt') {
           _cursorEl.style.display = 'none';
           _hudEl.style.display = 'none';
@@ -854,6 +1002,7 @@
           // Reset cursor to default teal on context switch
           _cursorEl.style.borderColor = 'rgba(48,213,200,0.8)';
           _cursorEl.style.boxShadow = '0 0 12px rgba(48,213,200,0.4),inset 0 0 8px rgba(48,213,200,0.1)';
+          _pulseContext();
         }
         break;
 
@@ -866,6 +1015,14 @@
           _huntOpen = false;
           _destroyHuntOverlay();
           // Don't send HUNT_CLOSE — core already changed context
+        }
+        break;
+
+      case 'PAC_GAMEPAD_UNIT_INFO':
+        if (e.data.name) {
+          _showTooltip(e.data);
+        } else {
+          _hideTooltip();
         }
         break;
     }
@@ -952,6 +1109,44 @@
     toggleRow.appendChild(toggleLabel);
     toggleRow.appendChild(toggleWrap);
     toggleGroup.appendChild(toggleRow);
+
+    // Haptics toggle
+    var hapRow = document.createElement('div');
+    hapRow.style.cssText =
+      'display:flex;justify-content:space-between;align-items:center;' +
+      'padding:6px 0;font-family:\'Courier New\',monospace;';
+
+    var hapLabel = document.createElement('span');
+    hapLabel.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.7);';
+    hapLabel.textContent = 'Haptic Feedback';
+
+    var hapWrap = document.createElement('label');
+    hapWrap.className = 'pac-toggle';
+    hapWrap.style.cssText = 'flex-shrink:0;';
+
+    var hapInput = document.createElement('input');
+    hapInput.type = 'checkbox';
+    hapInput.checked = config.haptics !== false;
+    hapInput.className = 'pac-cmd-toggle';
+
+    var hapTrack = document.createElement('div');
+    hapTrack.className = 'pac-toggle-track';
+    var hapKnob = document.createElement('div');
+    hapKnob.className = 'pac-toggle-knob';
+    hapTrack.appendChild(hapKnob);
+
+    hapWrap.appendChild(hapInput);
+    hapWrap.appendChild(hapTrack);
+
+    hapInput.addEventListener('change', function() {
+      config.haptics = hapInput.checked;
+      _saveConfig(config);
+      window.postMessage({ type: 'PAC_GAMEPAD_HAPTICS', enabled: config.haptics }, '*');
+    });
+
+    hapRow.appendChild(hapLabel);
+    hapRow.appendChild(hapWrap);
+    toggleGroup.appendChild(hapRow);
     container.appendChild(toggleGroup);
 
     // ── Button Reference ──
@@ -1104,6 +1299,47 @@
     dzRow.appendChild(dzBtns);
     analogGroup.appendChild(dzRow);
 
+    // Stick curve selector row
+    var curveRow = document.createElement('div');
+    curveRow.style.cssText =
+      'display:flex;align-items:center;justify-content:space-between;padding:6px 0;';
+
+    var curveLabel = document.createElement('span');
+    curveLabel.style.cssText = 'font-family:monospace;font-size:11px;color:rgba(255,255,255,0.6);';
+    curveLabel.textContent = 'Sensitivity';
+    curveRow.appendChild(curveLabel);
+
+    var curveBtns = document.createElement('div');
+    curveBtns.style.cssText = 'display:flex;gap:4px;';
+
+    var curveOptions = [
+      { label: 'Linear', value: 'linear' },
+      { label: 'Smooth', value: 'smooth' },
+      { label: 'Precise', value: 'precise' }
+    ];
+    var currentCurve = config.stickCurve || 'smooth';
+
+    curveOptions.forEach(function(opt) {
+      var btn = document.createElement('button');
+      btn.textContent = opt.label;
+      var isActive = (currentCurve === opt.value);
+      btn.style.cssText =
+        'font-family:monospace;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;' +
+        'border:1px solid ' + (isActive ? 'rgba(48,213,200,0.6)' : 'rgba(255,255,255,0.15)') + ';' +
+        'background:' + (isActive ? 'rgba(48,213,200,0.15)' : 'transparent') + ';' +
+        'color:' + (isActive ? 'rgba(48,213,200,0.9)' : 'rgba(255,255,255,0.4)') + ';';
+      btn.addEventListener('click', function() {
+        config.stickCurve = opt.value;
+        _saveConfig(config);
+        window.postMessage({ type: 'PAC_GAMEPAD_STICK_CURVE', curve: opt.value }, '*');
+        _renderPanel(container);
+      });
+      curveBtns.appendChild(btn);
+    });
+
+    curveRow.appendChild(curveBtns);
+    analogGroup.appendChild(curveRow);
+
     // Analog controls reference
     var analogRefHTML =
       '<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,0.4);line-height:1.8;padding:4px 0;">' +
@@ -1151,6 +1387,7 @@
   // ═══════════════════════════════════════════════════════════════════════════
 
   _injectCore();
+  _injectCursorStyles();
 
   if (PAC.DEBUG_MODE) {
     console.log('PAC Engine: Gamepad loaded');
