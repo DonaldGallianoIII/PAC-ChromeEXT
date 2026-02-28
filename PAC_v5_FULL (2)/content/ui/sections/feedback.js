@@ -39,12 +39,14 @@
           '<input type="text" id="pac-fb-input" class="pac-fb-input" ' +
             'placeholder="Share feedback or ideas..." maxlength="1000" autocomplete="off">' +
           '<button id="pac-fb-send" class="pac-fb-send-btn">\u2191</button>' +
-        '</div>';
+        '</div>' +
+        '<div id="pac-fb-remaining" class="pac-fb-remaining"></div>';
 
-      els.sprite   = body.querySelector('#pac-fb-sprite');
-      els.messages = body.querySelector('#pac-fb-messages');
-      els.input    = body.querySelector('#pac-fb-input');
-      els.sendBtn  = body.querySelector('#pac-fb-send');
+      els.sprite    = body.querySelector('#pac-fb-sprite');
+      els.messages  = body.querySelector('#pac-fb-messages');
+      els.input     = body.querySelector('#pac-fb-input');
+      els.sendBtn   = body.querySelector('#pac-fb-send');
+      els.remaining = body.querySelector('#pac-fb-remaining');
 
       _injectStyles();
       _wireUI();
@@ -88,10 +90,40 @@
 
       if (result && result.reply) {
         _appendBubble('assistant', result.reply);
+        _updateRemaining(result.remaining);
       } else {
-        _appendBubble('assistant', "Hmm, I couldn't process that. Try again?");
+        // Check if rate limited
+        var rem = Feedback.getRemaining();
+        if (rem === 0) {
+          _appendSystem('You\'ve hit the message limit (resets in ~1 hour).');
+          _disableInput();
+        } else {
+          _appendBubble('assistant', "Hmm, I couldn't process that. Try again?");
+        }
       }
     });
+  }
+
+  function _updateRemaining(count) {
+    if (!els.remaining || typeof count !== 'number') return;
+    if (count <= 3 && count > 0) {
+      els.remaining.textContent = count + ' message' + (count === 1 ? '' : 's') + ' remaining this hour';
+      els.remaining.style.display = 'block';
+    } else if (count <= 0) {
+      els.remaining.textContent = 'Message limit reached \u2014 resets in ~1 hour';
+      els.remaining.style.display = 'block';
+      _disableInput();
+    } else {
+      els.remaining.style.display = 'none';
+    }
+  }
+
+  function _disableInput() {
+    if (els.input) {
+      els.input.disabled = true;
+      els.input.placeholder = 'Message limit reached...';
+    }
+    if (els.sendBtn) els.sendBtn.disabled = true;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -360,6 +392,21 @@
       '}' +
       '.pac-fb-send-btn:hover { opacity: 0.85; }' +
       '.pac-fb-send-btn:active { transform: scale(0.93); }' +
+
+      // ── Remaining counter ────────────────────────────────────────────
+      '.pac-fb-remaining {' +
+        'display: none; text-align: center; padding: 4px 12px;' +
+        'font-size: 11px; color: var(--pac-text-muted, rgba(255,255,255,0.4));' +
+        'background: rgba(0,0,0,0.1); flex-shrink: 0;' +
+      '}' +
+
+      // ── Disabled state ──────────────────────────────────────────────
+      '.pac-fb-input:disabled {' +
+        'opacity: 0.4; cursor: not-allowed;' +
+      '}' +
+      '.pac-fb-send-btn:disabled {' +
+        'opacity: 0.3; cursor: not-allowed;' +
+      '}' +
 
       // ── Typing dots ─────────────────────────────────────────────────
       '@keyframes pac-fb-dot-pulse {' +

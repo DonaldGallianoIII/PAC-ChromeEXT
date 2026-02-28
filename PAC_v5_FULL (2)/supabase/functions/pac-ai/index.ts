@@ -43,7 +43,21 @@ How to handle different messages:
 - If someone mentions enjoying PAC, naturally suggest leaving a Chrome Web Store review — but don't force it into every message.
 - Off-topic stuff: You can engage briefly but steer back to PAC/gaming naturally. Don't be a buzzkill.
 
-IMPORTANT: Do NOT just say "thanks for the feedback" to everything. Actually read what the user said and respond to it specifically. Have a real conversation.`;
+IMPORTANT: Do NOT just say "thanks for the feedback" to everything. Actually read what the user said and respond to it specifically. Have a real conversation.
+
+You MUST respond in JSON with exactly these fields:
+{
+  "reply": "your conversational response",
+  "category": "chat" | "bug" | "feature" | "feedback"
+}
+
+Categories:
+- "chat" — greetings, casual talk, questions, general convo. This is the default.
+- "bug" — user is reporting a bug or issue with PAC.
+- "feature" — user is requesting a new feature or improvement.
+- "feedback" — user is giving specific feedback about PAC (positive or negative critique).
+
+Be strict: only use bug/feature/feedback when the user is CLEARLY providing something actionable. "hello" is chat. "I love PAC" is chat. "the overlay glitches on mobile" is bug. "add dark mode" is feature.`;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -135,6 +149,9 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
     return jsonResponse(400, { error: "Message too long (max 2000 chars)" });
   }
 
+  // Get remaining messages for this user
+  const remaining = await getRemainingMessages(supabase, userId);
+
   // Build messages with conversation history
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: DEUCE_PROMPT },
@@ -163,8 +180,9 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages,
-      max_tokens: 200,
+      max_tokens: 300,
       temperature: 0.8,
+      response_format: { type: "json_object" },
     }),
   });
 
@@ -175,26 +193,48 @@ async function handleChat(body: ChatRequest, supabase: any, userId: string) {
   }
 
   const data = await response.json();
-  const reply =
-    data.choices?.[0]?.message?.content?.trim() || "Thanks for the feedback!";
+  const raw = data.choices?.[0]?.message?.content?.trim() || "";
 
-  // Store in pac_feedback
-  const { data: fbData, error } = await supabase
-    .from("pac_feedback")
-    .insert({
-      user_id: body.username || userId,
-      category: "feedback",
-      message: body.message.trim(),
-      extension_version: "5.0.0",
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.error("DB insert error:", error);
+  // Parse JSON response from OpenAI
+  let reply = "Hey, something went wrong on my end. Try again?";
+  let category = "chat";
+  try {
+    const parsed = JSON.parse(raw);
+    reply = parsed.reply || reply;
+    category = parsed.category || "chat";
+  } catch {
+    // If JSON parse fails, use raw as reply
+    reply = raw || reply;
   }
 
-  return jsonResponse(200, { reply, id: fbData?.id || null });
+  // Only save to DB if it's actual feedback (not casual chat)
+  let feedbackId = null;
+  if (category !== "chat") {
+    const { data: fbData, error } = await supabase
+      .from("pac_feedback")
+      .insert({
+        user_id: body.username || userId,
+        category: category,
+        message: body.message.trim(),
+        extension_version: "5.0.0",
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("DB insert error:", error);
+    } else {
+      feedbackId = fbData?.id || null;
+    }
+  }
+
+  return jsonResponse(200, {
+    reply,
+    category,
+    id: feedbackId,
+    remaining: remaining - 1,
+    limit: RATE_LIMIT,
+  });
 }
 
 // ─── RAG Handler ────────────────────────────────────────────────────────────
@@ -332,10 +372,10 @@ async function handleFeedback(
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
 
-async function checkRateLimit(
+async function getUsedMessages(
   supabase: any,
   userId: string
-): Promise<boolean> {
+): Promise<number> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   const { count, error } = await supabase
@@ -346,10 +386,26 @@ async function checkRateLimit(
 
   if (error) {
     console.error("Rate limit check error:", error);
-    return true; // fail open
+    return 0; // fail open
   }
 
-  return (count || 0) < RATE_LIMIT;
+  return count || 0;
+}
+
+async function checkRateLimit(
+  supabase: any,
+  userId: string
+): Promise<boolean> {
+  const used = await getUsedMessages(supabase, userId);
+  return used < RATE_LIMIT;
+}
+
+async function getRemainingMessages(
+  supabase: any,
+  userId: string
+): Promise<number> {
+  const used = await getUsedMessages(supabase, userId);
+  return Math.max(0, RATE_LIMIT - used);
 }
 
 async function logRequest(
